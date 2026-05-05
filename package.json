@@ -65,6 +65,9 @@
     "vite": "^8.0.0",
     "vitest": "^3.0.5"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",

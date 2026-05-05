@@ -270,9 +270,14 @@ export const loginUser = createServerFn({ method: 'POST' })
   // @ts-ignore
   .handler(async ({ data }: { data: { username: string; password: string } }) => {
     const user = await prisma.pengguna.findFirst({
-      where: { email: data.username }
+      where: {
+        OR: [
+          { email: data.username },
+          { nama_lengkap: data.username },
+        ]
+      }
     })
-    if (!user) return { ok: false, error: 'Username tidak ditemukan.' }
+    if (!user) return { ok: false, error: 'Username atau email tidak ditemukan.' }
 
     const match = await bcrypt.compare(data.password, user.password_hash)
     if (!match) return { ok: false, error: 'Password salah.' }
@@ -326,3 +331,5 @@ export const registerUser = createServerFn({ method: 'POST' })
       }
     }
   })
+// Alias so components can import getUsers
+export const getUsers = getPengguna
