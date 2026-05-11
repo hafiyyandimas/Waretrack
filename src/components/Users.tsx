@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { getUsers } from '../lib/queries'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { getUsers, registerUser, updateUser, deleteUser, getAuditLog, createAuditLog } from '../lib/queries'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 function IcoDownload() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> }
@@ -9,6 +9,36 @@ function IcoUsers()    { return <svg width="18" height="18" viewBox="0 0 24 24" 
 function IcoShield()   { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> }
 function IcoMail()     { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg> }
 function IcoEdit()     { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> }
+function IcoTrash()    { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> }
+function IcoMore()     { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg> }
+function IcoX()        { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> }
+function IcoLog()      { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> }
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const GREEN = '#2E7D52'
+
+const ROLE_OPTIONS = [
+  'Super Admin', 'Admin Gudang', 'Manajer',
+  'Staff Inbound', 'Staff Outbound', 'Auditor',
+]
+
+const ROLES_CONFIG = [
+  { nama:'Super Admin',    perms:['Semua Akses'] },
+  { nama:'Admin Gudang',   perms:['Kelola Stok','Kelola User','Laporan'] },
+  { nama:'Manajer',        perms:['Kelola Stok','Lihat Laporan'] },
+  { nama:'Staff Inbound',  perms:['Terima Barang','Scan SKU'] },
+  { nama:'Staff Outbound', perms:['Keluarkan Barang','Scan SKU'] },
+  { nama:'Auditor',        perms:['Lihat Semua','Ekspor Laporan'] },
+]
+
+// ── Helper: ambil aktor dari session ─────────────────────────────────────────
+function getAktor(): string {
+  try {
+    const stored = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user')
+    if (!stored) return 'System'
+    return JSON.parse(stored).nama_lengkap ?? 'System'
+  } catch { return 'System' }
+}
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
 function Avatar({ name, size = 36 }: { name: string; size?: number }) {
@@ -22,17 +52,6 @@ function Avatar({ name, size = 36 }: { name: string; size?: number }) {
   )
 }
 
-// ── Status Badge ──────────────────────────────────────────────────────────────
-function StatusBadge({ aktif }: { aktif: boolean }) {
-  return (
-    <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', borderRadius:20, fontSize:11.5, fontWeight:600, background: aktif?'#DCFCE7':'#F3F4F6', color: aktif?'#16A34A':'#6B7280' }}>
-      <span style={{ width:6, height:6, borderRadius:'50%', background: aktif?'#16A34A':'#9CA3AF' }}/>
-      {aktif ? 'Aktif' : 'Tidak Aktif'}
-    </span>
-  )
-}
-
-// ── Permission Tag ────────────────────────────────────────────────────────────
 function PermTag({ label }: { label: string }) {
   return (
     <span style={{ padding:'3px 10px', borderRadius:6, background:'#F0F9F4', border:'1px solid #D1FAE5', fontSize:11.5, color:'#2E7D52', fontWeight:500 }}>
@@ -41,45 +60,328 @@ function PermTag({ label }: { label: string }) {
   )
 }
 
-// ── Roles config ──────────────────────────────────────────────────────────────
-const ROLES_CONFIG = [
-  { nama:'Admin',            pengguna:2,  perms:['Semua Akses'] },
-  { nama:'Warehouse Manager',pengguna:3,  perms:['Kelola Stok','Laporan','Kelola User'] },
-  { nama:'Supervisor',       pengguna:5,  perms:['Kelola Stok','Lihat Laporan'] },
-  { nama:'Staff Gudang',     pengguna:12, perms:['Terima Barang','Keluarkan Barang','Scan SKU'] },
-]
+// ── Shared modal styles ───────────────────────────────────────────────────────
+const overlay:     React.CSSProperties = { position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }
+const modalBox:    React.CSSProperties = { background:'#fff', borderRadius:16, padding:'28px 32px', width:'100%', maxWidth:460, boxShadow:'0 8px 32px rgba(0,0,0,0.15)' }
+const modalTitle:  React.CSSProperties = { fontSize:18, fontWeight:700, color:'#1A2E22', margin:'0 0 4px' }
+const modalSub:    React.CSSProperties = { fontSize:13, color:'#9CA3AF', margin:'0 0 24px' }
+const fieldGroup:  React.CSSProperties = { marginBottom:16 }
+const fieldLabel:  React.CSSProperties = { display:'block', fontSize:13, fontWeight:500, color:'#374151', marginBottom:6 }
+const fieldInput:  React.CSSProperties = { width:'100%', padding:'10px 14px', border:'1.5px solid #E5E7EB', borderRadius:10, fontSize:14, color:'#1A2E22', outline:'none', background:'#FAFAFA', boxSizing:'border-box' }
+const fieldSelect: React.CSSProperties = { ...fieldInput, cursor:'pointer' }
+const errStyle:    React.CSSProperties = { fontSize:12, color:'#EF4444', marginTop:4, display:'block' }
+const modalFooter: React.CSSProperties = { display:'flex', justifyContent:'flex-end', gap:8, marginTop:24 }
 
-// ── Audit log config ──────────────────────────────────────────────────────────
-const AUDIT_LOG = [
-  { icon:'mail', bg:'#EBF5EE', color:'#2E7D52', text:<><strong>Ahmad S.</strong> mengundang pengguna baru <strong>dewi.k@waretrack.com</strong></>, time:'29 Apr 2024, 14:30' },
-  { icon:'edit', bg:'#EFF6FF', color:'#2563EB', text:<><strong>Budi P.</strong> mengubah role <strong>Siti R.</strong> menjadi Staff Gudang</>, time:'28 Apr 2024, 11:15' },
-  { icon:'edit', bg:'#F5F3FF', color:'#7C3AED', text:<><strong>Ahmad S.</strong> menonaktifkan akun <strong>Eko W.</strong></>, time:'27 Apr 2024, 09:40' },
-  { icon:'mail', bg:'#FEF9C3', color:'#CA8A04', text:<><strong>Siti R.</strong> login dari perangkat baru</>, time:'26 Apr 2024, 08:20' },
-]
+// ── Modal: Tambah Pengguna ────────────────────────────────────────────────────
+interface AddUserForm { nama_lengkap: string; username: string; password: string; role: string }
+
+function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [form, setForm]           = useState<AddUserForm>({ nama_lengkap:'', username:'', password:'', role:'Staff Inbound' })
+  const [errors, setErrors]       = useState<Partial<AddUserForm>>({})
+  const [serverErr, setServerErr] = useState('')
+  const queryClient               = useQueryClient()
+
+  const mut = useMutation({
+    mutationFn: async (f: AddUserForm) => {
+      const res = await registerUser({ data: { nama_lengkap: f.nama_lengkap, username: f.username, password: f.password } })
+      if (!res.ok) throw new Error(res.error)
+      if (f.role !== 'Staff Inbound' && res.user) {
+        await updateUser({ data: { id_pengguna: res.user.id_pengguna, role: f.role } })
+      }
+      // Catat ke audit log
+      await createAuditLog({ data: {
+        aktor: getAktor(),
+        aksi: `Menambahkan pengguna baru: ${f.nama_lengkap} (${f.role})`,
+      }})
+      return res
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['audit_log'] })
+      onSaved()
+    },
+    onError: (e: any) => setServerErr(e?.message ?? 'Gagal menambah pengguna.'),
+  })
+
+  function set(k: keyof AddUserForm, v: string) {
+    setForm(p => ({ ...p, [k]:v }))
+    setErrors(p => { const n={...p}; delete n[k]; return n })
+    setServerErr('')
+  }
+
+  function validate() {
+    const e: Partial<AddUserForm> = {}
+    if (!form.nama_lengkap.trim()) e.nama_lengkap = 'Nama lengkap wajib diisi.'
+    if (!form.username.trim())     e.username     = 'Username wajib diisi.'
+    if (!form.password)            e.password     = 'Password wajib diisi.'
+    else if (form.password.length < 6) e.password = 'Minimal 6 karakter.'
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={modalBox} onClick={e => e.stopPropagation()}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
+          <div>
+            <div style={modalTitle}>Tambah Pengguna</div>
+            <div style={modalSub}>Buat akun baru untuk anggota tim</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9CA3AF', padding:4 }}><IcoX /></button>
+        </div>
+
+        {serverErr && (
+          <div style={{ background:'#FEE2E2', border:'1px solid #FCA5A5', color:'#991B1B', borderRadius:10, padding:'10px 14px', fontSize:13, marginBottom:16 }}>
+            ⚠ {serverErr}
+          </div>
+        )}
+
+        <div style={fieldGroup}>
+          <label style={fieldLabel}>Nama Lengkap <span style={{ color:'#EF4444' }}>*</span></label>
+          <input style={{ ...fieldInput, borderColor: errors.nama_lengkap ? '#F87171' : '#E5E7EB' }}
+            placeholder="Contoh: Budi Santoso" value={form.nama_lengkap}
+            onChange={e => set('nama_lengkap', e.target.value)} autoFocus />
+          {errors.nama_lengkap && <span style={errStyle}>{errors.nama_lengkap}</span>}
+        </div>
+
+        <div style={fieldGroup}>
+          <label style={fieldLabel}>Username <span style={{ color:'#EF4444' }}>*</span></label>
+          <input style={{ ...fieldInput, borderColor: errors.username ? '#F87171' : '#E5E7EB' }}
+            placeholder="Contoh: budi.santoso" value={form.username}
+            onChange={e => set('username', e.target.value)} />
+          {errors.username && <span style={errStyle}>{errors.username}</span>}
+        </div>
+
+        <div style={fieldGroup}>
+          <label style={fieldLabel}>Password <span style={{ color:'#EF4444' }}>*</span></label>
+          <input style={{ ...fieldInput, borderColor: errors.password ? '#F87171' : '#E5E7EB' }}
+            type="password" placeholder="Minimal 6 karakter" value={form.password}
+            onChange={e => set('password', e.target.value)} />
+          {errors.password && <span style={errStyle}>{errors.password}</span>}
+        </div>
+
+        <div style={fieldGroup}>
+          <label style={fieldLabel}>Role</label>
+          <select style={fieldSelect} value={form.role} onChange={e => set('role', e.target.value)}>
+            {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+
+        <div style={modalFooter}>
+          <button className="btn btn-secondary btn-sm" onClick={onClose} disabled={mut.isPending}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={() => { if (validate()) mut.mutate(form) }} disabled={mut.isPending}>
+            {mut.isPending ? 'Menyimpan…' : 'Tambah Pengguna'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal: Edit Pengguna ──────────────────────────────────────────────────────
+interface EditUserForm { nama_lengkap: string; role: string; password: string }
+
+function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm]           = useState<EditUserForm>({ nama_lengkap: user.nama_lengkap, role: user.role, password:'' })
+  const [errors, setErrors]       = useState<Partial<EditUserForm>>({})
+  const [serverErr, setServerErr] = useState('')
+  const queryClient               = useQueryClient()
+
+  const mut = useMutation({
+    mutationFn: async (f: EditUserForm) => {
+      await updateUser({ data: {
+        id_pengguna: user.id_pengguna,
+        nama_lengkap: f.nama_lengkap,
+        role: f.role,
+        ...(f.password ? { password: f.password } : {}),
+      }})
+      // Catat ke audit log
+      await createAuditLog({ data: {
+        aktor: getAktor(),
+        aksi: `Mengubah data pengguna: ${user.nama_lengkap}${f.role !== user.role ? ` → role diubah ke ${f.role}` : ''}`,
+      }})
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['audit_log'] })
+      onSaved()
+    },
+    onError: (e: any) => setServerErr(e?.message ?? 'Gagal mengupdate pengguna.'),
+  })
+
+  function set(k: keyof EditUserForm, v: string) {
+    setForm(p => ({ ...p, [k]:v }))
+    setErrors(p => { const n={...p}; delete n[k]; return n })
+    setServerErr('')
+  }
+
+  function validate() {
+    const e: Partial<EditUserForm> = {}
+    if (!form.nama_lengkap.trim()) e.nama_lengkap = 'Nama lengkap wajib diisi.'
+    if (form.password && form.password.length < 6) e.password = 'Minimal 6 karakter.'
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={modalBox} onClick={e => e.stopPropagation()}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
+          <div>
+            <div style={modalTitle}>Edit Pengguna</div>
+            <div style={modalSub}>Ubah data akun <strong>{user.nama_lengkap}</strong></div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9CA3AF', padding:4 }}><IcoX /></button>
+        </div>
+
+        {serverErr && (
+          <div style={{ background:'#FEE2E2', border:'1px solid #FCA5A5', color:'#991B1B', borderRadius:10, padding:'10px 14px', fontSize:13, marginBottom:16 }}>
+            ⚠ {serverErr}
+          </div>
+        )}
+
+        <div style={fieldGroup}>
+          <label style={fieldLabel}>Nama Lengkap <span style={{ color:'#EF4444' }}>*</span></label>
+          <input style={{ ...fieldInput, borderColor: errors.nama_lengkap ? '#F87171' : '#E5E7EB' }}
+            value={form.nama_lengkap} onChange={e => set('nama_lengkap', e.target.value)} />
+          {errors.nama_lengkap && <span style={errStyle}>{errors.nama_lengkap}</span>}
+        </div>
+
+        <div style={fieldGroup}>
+          <label style={fieldLabel}>Username</label>
+          <input style={{ ...fieldInput, background:'#F9FAFB', color:'#9CA3AF', cursor:'not-allowed' }}
+            value={user.email} disabled />
+          <span style={{ fontSize:11.5, color:'#9CA3AF', marginTop:3, display:'block' }}>Username tidak dapat diubah</span>
+        </div>
+
+        <div style={fieldGroup}>
+          <label style={fieldLabel}>Role</label>
+          <select style={fieldSelect} value={form.role} onChange={e => set('role', e.target.value)}>
+            {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+
+        <div style={fieldGroup}>
+          <label style={fieldLabel}>Password Baru <span style={{ color:'#9CA3AF', fontWeight:400 }}>(opsional)</span></label>
+          <input style={{ ...fieldInput, borderColor: errors.password ? '#F87171' : '#E5E7EB' }}
+            type="password" placeholder="Kosongkan jika tidak ingin mengubah"
+            value={form.password} onChange={e => set('password', e.target.value)} />
+          {errors.password && <span style={errStyle}>{errors.password}</span>}
+        </div>
+
+        <div style={modalFooter}>
+          <button className="btn btn-secondary btn-sm" onClick={onClose} disabled={mut.isPending}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={() => { if (validate()) mut.mutate(form) }} disabled={mut.isPending}>
+            {mut.isPending ? 'Menyimpan…' : 'Simpan Perubahan'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal: Hapus Pengguna ─────────────────────────────────────────────────────
+function DeleteUserModal({ user, onClose, onDeleted }: { user: any; onClose: () => void; onDeleted: () => void }) {
+  const queryClient = useQueryClient()
+
+  const mut = useMutation({
+    mutationFn: async () => {
+      await deleteUser({ data: user.id_pengguna })
+      await createAuditLog({ data: {
+        aktor: getAktor(),
+        aksi: `Menghapus pengguna: ${user.nama_lengkap} (${user.role})`,
+      }})
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['audit_log'] })
+      onDeleted()
+    },
+  })
+
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={{ ...modalBox, maxWidth:400 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
+          <div style={modalTitle}>Hapus Pengguna?</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9CA3AF', padding:4 }}><IcoX /></button>
+        </div>
+        <p style={{ fontSize:14, color:'#374151', lineHeight:1.6, margin:'0 0 24px' }}>
+          Akun <strong>{user.nama_lengkap}</strong>{' '}
+          (<span style={{ fontFamily:'monospace', fontSize:13 }}>{user.email}</span>) akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.
+        </p>
+        <div style={modalFooter}>
+          <button className="btn btn-secondary btn-sm" onClick={onClose} disabled={mut.isPending}>Batal</button>
+          <button
+            className="btn btn-sm"
+            style={{ background:'#DC2626', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:13, fontWeight:600, cursor:'pointer' }}
+            onClick={() => mut.mutate()} disabled={mut.isPending}
+          >
+            {mut.isPending ? 'Menghapus…' : 'Ya, Hapus'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Row Action Menu ───────────────────────────────────────────────────────────
+function RowMenu({ onEdit, onDelete, onClose }: { onEdit: () => void; onDelete: () => void; onClose: () => void }) {
+  return (
+    <>
+      <div style={{ position:'fixed', inset:0, zIndex:49 }} onClick={onClose} />
+      <div style={{ position:'absolute', right:0, top:'100%', zIndex:50, background:'#fff', border:'1px solid #EAECF0', borderRadius:10, boxShadow:'0 8px 24px rgba(0,0,0,.10)', minWidth:150, padding:'4px 0' }}>
+        <button onClick={() => { onClose(); onEdit() }}
+          style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'9px 14px', background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#374151', textAlign:'left' }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+        ><IcoEdit /> Edit pengguna</button>
+        <div style={{ height:1, background:'#F3F4F6', margin:'4px 0' }} />
+        <button onClick={() => { onClose(); onDelete() }}
+          style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'9px 14px', background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#DC2626', textAlign:'left' }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#FEF2F2')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+        ><IcoTrash /> Hapus pengguna</button>
+      </div>
+    </>
+  )
+}
+
+// ── Audit Log Icon ────────────────────────────────────────────────────────────
+function auditIcon(aksi: string): { bg: string; color: string; icon: JSX.Element } {
+  if (aksi.startsWith('Menambahkan'))
+    return { bg:'#EBF5EE', color:'#2E7D52', icon:<IcoMail /> }
+  if (aksi.startsWith('Mengubah'))
+    return { bg:'#EFF6FF', color:'#2563EB', icon:<IcoEdit /> }
+  if (aksi.startsWith('Menghapus'))
+    return { bg:'#FEF2F2', color:'#DC2626', icon:<IcoTrash /> }
+  return { bg:'#F5F3FF', color:'#7C3AED', icon:<IcoLog /> }
+}
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export function Users() {
-  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [showAdd, setShowAdd]           = useState(false)
+  const [editTarget, setEditTarget]     = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [openMenuId, setOpenMenuId]     = useState<number | null>(null)
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: () => getUsers(),
   })
 
-  // Derive stats from real data or fallback
-  const totalUser   = users.length || 22
-  const aktifUser   = users.filter((u: any) => u.aktif !== false).length || 20
-  const nonAktif    = totalUser - aktifUser
-  const totalRole   = 4
+  const { data: auditLogs = [], isLoading: auditLoading } = useQuery({
+    queryKey: ['audit_log'],
+    queryFn: () => getAuditLog(),
+  })
 
-  // Fallback static users for display if DB is empty
-  const displayUsers = users.length > 0 ? users : [
-    { id_pengguna:1, nama_lengkap:'Ahmad Supardi',  email:'ahmad.s@waretrack.com',  role:'Admin',             aktif:true,  last_login:'29 Apr 2024, 14:00' },
-    { id_pengguna:2, nama_lengkap:'Budi Prasetyo',  email:'budi.p@waretrack.com',   role:'Warehouse Manager', aktif:true,  last_login:'29 Apr 2024, 13:00' },
-    { id_pengguna:3, nama_lengkap:'Siti Rahmawati', email:'siti.r@waretrack.com',   role:'Staff Gudang',      aktif:true,  last_login:'29 Apr 2024, 09:00' },
-    { id_pengguna:4, nama_lengkap:'Dewi Kartika',   email:'dewi.k@waretrack.com',   role:'Staff Gudang',      aktif:true,  last_login:'28 Apr 2024, 16:00' },
-    { id_pengguna:5, nama_lengkap:'Eko Wijaya',     email:'eko.w@waretrack.com',    role:'Supervisor',        aktif:false, last_login:'15 Apr 2024, 10:00' },
-  ]
+  const totalUser = users.length
+  const totalRole = new Set(users.map((u: any) => u.role)).size || ROLE_OPTIONS.length
+
+  const rolesWithCount = ROLES_CONFIG.map(r => ({
+    ...r,
+    pengguna: users.filter((u: any) => u.role === r.nama).length,
+  }))
 
   return (
     <>
@@ -91,17 +393,18 @@ export function Users() {
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button className="btn btn-secondary btn-sm"><IcoDownload /> Ekspor</button>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowInviteModal(true)}><IcoPlus /> Undang Pengguna</button>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
+            <IcoPlus /> Tambah Pengguna
+          </button>
         </div>
       </div>
 
       {/* ── Stat cards ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:20 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:20 }}>
         {[
-          { label:'Total User',   value:totalUser, icon:<IcoUsers />,  iconBg:'#EBF5EE', iconColor:'#2E7D52' },
-          { label:'Aktif',        value:aktifUser, icon:<span style={{ width:10, height:10, borderRadius:'50%', background:'#16A34A', display:'inline-block' }}/>, iconBg:'#DCFCE7', iconColor:'#16A34A' },
-          { label:'Tidak Aktif',  value:nonAktif,  icon:<span style={{ width:10, height:10, borderRadius:'50%', background:'#9CA3AF', display:'inline-block' }}/>, iconBg:'#F3F4F6', iconColor:'#6B7280' },
-          { label:'Total Role',   value:totalRole, icon:<IcoShield />, iconBg:'#F5F3FF', iconColor:'#7C3AED' },
+          { label:'Total Pengguna',  value: totalUser,  icon:<IcoUsers />,  iconBg:'#EBF5EE', iconColor:GREEN },
+          { label:'Total Role Aktif',value: totalRole,  icon:<IcoShield />, iconBg:'#F5F3FF', iconColor:'#7C3AED' },
+          { label:'Super Admin',     value: users.filter((u:any) => u.role === 'Super Admin').length, icon:<IcoShield />, iconBg:'#FEF9C3', iconColor:'#CA8A04' },
         ].map((s, i) => (
           <div key={i} style={{ background:'#fff', borderRadius:14, border:'1px solid #EAECF0', padding:'16px 20px', display:'flex', alignItems:'center', gap:16 }}>
             <div style={{ width:44, height:44, borderRadius:12, background:s.iconBg, color:s.iconColor, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{s.icon}</div>
@@ -114,27 +417,30 @@ export function Users() {
       </div>
 
       {/* ── Two-column layout ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 320px', gap:16, marginBottom:16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 300px', gap:16, marginBottom:16 }}>
 
-        {/* Left — Daftar Pengguna */}
+        {/* Daftar Pengguna */}
         <div className="wt-card">
           <div className="wt-card-header">
             <div className="wt-card-title">Daftar Pengguna</div>
+            <span style={{ fontSize:12, color:'#9CA3AF' }}>{totalUser} pengguna</span>
           </div>
           {isLoading ? (
             <div style={{ padding:40, textAlign:'center', color:'#9CA3AF', fontSize:14 }}>Memuat data…</div>
+          ) : users.length === 0 ? (
+            <div style={{ padding:40, textAlign:'center', color:'#9CA3AF', fontSize:14 }}>Belum ada pengguna</div>
           ) : (
             <table>
               <thead>
                 <tr>
                   <th>Nama</th>
                   <th>Role</th>
-                  <th>Status</th>
-                  <th>Login Terakhir</th>
+                  <th>Dibuat</th>
+                  <th style={{ width:48 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {displayUsers.map((u: any) => (
+                {(users as any[]).map((u: any) => (
                   <tr key={u.id_pengguna}>
                     <td>
                       <div style={{ display:'flex', alignItems:'center', gap:12 }}>
@@ -145,9 +451,29 @@ export function Users() {
                         </div>
                       </div>
                     </td>
-                    <td style={{ fontSize:13, color:'#374151' }}>{u.role}</td>
-                    <td><StatusBadge aktif={u.aktif !== false} /></td>
-                    <td style={{ fontSize:12, color:'#9CA3AF', whiteSpace:'nowrap' }}>{u.last_login ?? u.updated_at ? new Date(u.updated_at).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}) : '—'}</td>
+                    <td>
+                      <span style={{ fontSize:12.5, padding:'3px 10px', borderRadius:20, background:'#F3F4F6', color:'#374151', fontWeight:500 }}>
+                        {u.role}
+                      </span>
+                    </td>
+                    <td style={{ fontSize:12, color:'#9CA3AF', whiteSpace:'nowrap' }}>
+                      {new Date(u.created_at).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' })}
+                    </td>
+                    <td style={{ position:'relative' }}>
+                      <button
+                        onClick={() => setOpenMenuId(openMenuId === u.id_pengguna ? null : u.id_pengguna)}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'#9CA3AF', padding:'4px 8px', borderRadius:6 }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                      ><IcoMore /></button>
+                      {openMenuId === u.id_pengguna && (
+                        <RowMenu
+                          onEdit={() => setEditTarget(u)}
+                          onDelete={() => setDeleteTarget(u)}
+                          onClose={() => setOpenMenuId(null)}
+                        />
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -155,23 +481,22 @@ export function Users() {
           )}
         </div>
 
-        {/* Right — Role & Izin */}
+        {/* Role & Izin */}
         <div className="wt-card" style={{ alignSelf:'start' }}>
           <div className="wt-card-header">
             <div className="wt-card-title">Role &amp; Izin</div>
-            <button className="wt-card-link">Kelola</button>
           </div>
-          <div style={{ padding:'0 20px 20px', display:'flex', flexDirection:'column', gap:20 }}>
-            {ROLES_CONFIG.map(role => (
+          <div style={{ padding:'0 20px 20px', display:'flex', flexDirection:'column', gap:18 }}>
+            {rolesWithCount.map(role => (
               <div key={role.nama}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
                   <div>
-                    <div style={{ fontWeight:700, fontSize:13.5, color:'#1A2E22' }}>{role.nama}</div>
+                    <div style={{ fontWeight:700, fontSize:13, color:'#1A2E22' }}>{role.nama}</div>
                     <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:1 }}>{role.pengguna} pengguna</div>
                   </div>
                   <IcoShield />
                 </div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:8 }}>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
                   {role.perms.map(p => <PermTag key={p} label={p} />)}
                 </div>
               </div>
@@ -184,45 +509,48 @@ export function Users() {
       <div className="wt-card">
         <div className="wt-card-header">
           <div className="wt-card-title">Audit Log</div>
+          <span style={{ fontSize:12, color:'#9CA3AF' }}>{(auditLogs as any[]).length} aktivitas tercatat</span>
         </div>
-        <div style={{ padding:'0 20px 20px', display:'flex', flexDirection:'column', gap:0 }}>
-          {AUDIT_LOG.map((log, i) => (
-            <div key={i} style={{ display:'flex', gap:14, padding:'14px 0', borderBottom: i < AUDIT_LOG.length-1 ? '1px solid #F5F6FA' : 'none' }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:log.bg, color:log.color, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                {log.icon === 'mail' ? <IcoMail /> : <IcoEdit />}
-              </div>
-              <div>
-                <div style={{ fontSize:13, color:'#374151', lineHeight:1.5 }}>{log.text}</div>
-                <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:3 }}>{log.time}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+
+        {auditLoading ? (
+          <div style={{ padding:32, textAlign:'center', color:'#9CA3AF', fontSize:14 }}>Memuat log…</div>
+        ) : (auditLogs as any[]).length === 0 ? (
+          <div style={{ padding:32, textAlign:'center', color:'#9CA3AF', fontSize:14 }}>
+            Belum ada aktivitas tercatat. Log akan muncul setelah ada perubahan data pengguna.
+          </div>
+        ) : (
+          <div style={{ padding:'0 20px 20px', display:'flex', flexDirection:'column' }}>
+            {(auditLogs as any[]).map((log: any, i: number) => {
+              const { bg, color, icon } = auditIcon(log.aksi)
+              return (
+                <div key={log.id_log} style={{ display:'flex', gap:14, padding:'14px 0', borderBottom: i < (auditLogs as any[]).length - 1 ? '1px solid #F5F6FA' : 'none' }}>
+                  <div style={{ width:36, height:36, borderRadius:10, background:bg, color, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    {icon}
+                  </div>
+                  <div>
+                    <div style={{ fontSize:13, color:'#374151', lineHeight:1.5 }}>
+                      <strong>{log.aktor}</strong> — {log.aksi}
+                    </div>
+                    <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:3 }}>
+                      {new Date(log.created_at).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      {/* ── Invite Modal ── */}
-      {showInviteModal && (
-        <div className="modal-overlay" onClick={() => setShowInviteModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">Undang Pengguna</div>
-            <div className="modal-sub">Kirim undangan ke anggota tim baru</div>
-            <div className="form-group">
-              <label className="form-label">Email</label>
-              <input className="form-input" type="email" placeholder="nama@perusahaan.com" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Role</label>
-              <select className="form-select">
-                <option value="">Pilih role…</option>
-                {ROLES_CONFIG.map(r => <option key={r.nama} value={r.nama}>{r.nama}</option>)}
-              </select>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowInviteModal(false)}>Batal</button>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowInviteModal(false)}>Kirim Undangan</button>
-            </div>
-          </div>
-        </div>
+      {/* ── Modals ── */}
+      {showAdd && (
+        <AddUserModal onClose={() => setShowAdd(false)} onSaved={() => setShowAdd(false)} />
+      )}
+      {editTarget && (
+        <EditUserModal user={editTarget} onClose={() => setEditTarget(null)} onSaved={() => setEditTarget(null)} />
+      )}
+      {deleteTarget && (
+        <DeleteUserModal user={deleteTarget} onClose={() => setDeleteTarget(null)} onDeleted={() => setDeleteTarget(null)} />
       )}
     </>
   )

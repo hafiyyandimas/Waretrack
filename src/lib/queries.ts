@@ -354,3 +354,18 @@ export const deleteUser = createServerFn({ method: 'POST' })
     await prisma.pengguna.delete({ where: { id_pengguna: data } })
     return { ok: true }
   })
+
+// ─── Audit Log ──────────────────────────────────────────────────────────────
+
+export const getAuditLog = createServerFn({ method: 'GET' }).handler(async () => {
+  return await prisma.auditLog.findMany({
+    orderBy: { created_at: 'desc' },
+    take: 30,
+  })
+})
+
+export const createAuditLog = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: { data: { aktor: string; aksi: string } }) => {
+    return await prisma.auditLog.create({ data })
+  })

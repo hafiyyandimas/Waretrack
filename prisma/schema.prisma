@@ -53,3 +53,12 @@ model Transaksi {
   @@index([tanggal])
   @@map("transaksi")
 }
+
+model AuditLog {
+  id_log     Int      @id @default(autoincrement())
+  aktor      String   @db.VarChar(100)
+  aksi       String   @db.VarChar(200)
+  created_at DateTime @default(now())
+
+  @@map("audit_log")
+}

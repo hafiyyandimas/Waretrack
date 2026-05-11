@@ -130,7 +130,7 @@ export function Login() {
         sessionStorage.setItem('auth_user', userData)
         localStorage.removeItem('auth_user')
       }
-      navigate({ to:'/' })
+      window.location.href = '/'
     } catch { setLoginServerErr('Terjadi kesalahan. Coba lagi.') }
     finally   { setLoginLoading(false) }
   }

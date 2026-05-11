@@ -50,7 +50,6 @@ function IconLogout() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
 }
 
-// ── Critical CSS inlined to prevent FOUC ─────────────────────────────────────
 const CRITICAL_CSS = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -82,102 +81,79 @@ const CRITICAL_CSS = `
   .btn-sm { padding: 6px 12px; font-size: 12.5px; border-radius: 8px; }
 `
 
-// ── Shell ────────────────────────────────────────────────────────────────────
+// ── Shell ─────────────────────────────────────────────────────────────────────
 function Shell() {
   const router   = useRouter()
   const pathname = router.state.location.pathname
-  const [user, setUser]       = useState<{ nama_lengkap: string; role: string } | null>(null)
-  const [checked, setChecked] = useState(false)
+
+  const [user, setUser] = useState<{ nama_lengkap: string; role: string } | null>(null)
 
   useEffect(() => {
-  // Cek localStorage dulu (ingat saya), lalu sessionStorage
-  const stored = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user')
-  if (stored) setUser(JSON.parse(stored))
-  setChecked(true)
-}, [pathname])
-
-  if (!checked) {
-    // For public pages, render immediately without waiting for auth check
-    if (pathname === '/login' || pathname === '/contact') {
-      return (
-        <html lang="id"><head>
-          <meta charSet="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>WareTrack</title>
-          <style dangerouslySetInnerHTML={{ __html: CRITICAL_CSS }} />
-          <link rel="stylesheet" href={wmsStyles} />
-          <HeadContent />
-        </head><body>
-          <QueryClientProvider client={queryClient}><Outlet /></QueryClientProvider>
-          <Scripts />
-        </body></html>
-      )
+    const stored = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user')
+    if (stored) {
+      setUser(JSON.parse(stored))
+    } else if (pathname !== '/login' && pathname !== '/contact') {
+      window.location.href = '/login'
     }
-    // For protected pages, show blank while checking
-    return (
-      <html lang="id"><head>
-        <meta charSet="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>WareTrack</title>
-        <style dangerouslySetInnerHTML={{ __html: CRITICAL_CSS }} />
-        <link rel="stylesheet" href={wmsStyles} />
-        <HeadContent />
-      </head><body><Scripts /></body></html>
-    )
-  }
-
-  if (!user && pathname !== '/login' && pathname !== '/contact') {
-    window.location.href = '/login'
-    return null
-  }
-
-  // No-sidebar pages
-  const noSidebar = pathname === '/login' || pathname === '/contact'
-  if (noSidebar) return (
-    <html lang="id"><head>
-      <meta charSet="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>WareTrack</title>
-      <link rel="stylesheet" href={wmsStyles} />
-      <HeadContent />
-    </head><body>
-      <QueryClientProvider client={queryClient}><Outlet /></QueryClientProvider>
-      <Scripts />
-    </body></html>
-  )
-
-  const initials = user!.nama_lengkap?.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase() ?? 'U'
+  }, [pathname])
 
   function handleLogout() {
-  localStorage.removeItem('auth_user')
-  sessionStorage.removeItem('auth_user')
-  window.location.href = '/login'
-}
+    localStorage.removeItem('auth_user')
+    sessionStorage.removeItem('auth_user')
+    window.location.href = '/login'
+  }
+
+  const noSidebar = pathname === '/login' || pathname === '/contact'
+  const userRole  = user?.role ?? ''
+
+  const HEAD = (
+    <head>
+      <meta charSet="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>WareTrack</title>
+      <style dangerouslySetInnerHTML={{ __html: CRITICAL_CSS }} />
+      <link rel="stylesheet" href={wmsStyles} />
+      <HeadContent />
+    </head>
+  )
+
+  // ── Halaman tanpa sidebar ──
+  if (noSidebar) return (
+    <html lang="id">
+      {HEAD}
+      <body>
+        <QueryClientProvider client={queryClient}>
+          <Outlet />
+        </QueryClientProvider>
+        <Scripts />
+      </body>
+    </html>
+  )
+
+  const initials = user?.nama_lengkap
+    ?.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase() ?? '?'
+
+  // Filter nav berdasarkan role
+  const visibleNav = NAV.filter(item => {
+    if (item.to === '/users' && userRole !== 'Super Admin') return false
+    return true
+  })
 
   return (
     <html lang="id">
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>WareTrack</title>
-        <style dangerouslySetInnerHTML={{ __html: CRITICAL_CSS }} />
-        <link rel="stylesheet" href={wmsStyles} />
-        <HeadContent />
-      </head>
+      {HEAD}
       <body>
         <QueryClientProvider client={queryClient}>
           <div className="wt-shell">
 
             {/* ── Sidebar ── */}
             <aside className="wt-sidebar">
-              {/* Brand */}
               <div className="wt-brand">
-                <div className="wt-brand-logo">
-                  <IconBox />
-                </div>
+                <div className="wt-brand-logo"><IconBox /></div>
                 <span className="wt-brand-name">WareTrack</span>
               </div>
-
-              {/* Nav */}
               <nav className="wt-nav">
-                {NAV.map(item => (
+                {visibleNav.map(item => (
                   <Link
                     key={item.to}
                     to={item.to}
@@ -190,13 +166,11 @@ function Shell() {
                   </Link>
                 ))}
               </nav>
-
-              {/* User footer */}
               <div className="wt-sidebar-footer">
                 <div className="wt-user-avatar">{initials}</div>
                 <div className="wt-user-info">
-                  <div className="wt-user-name">{user!.nama_lengkap}</div>
-                  <div className="wt-user-role">{user!.role}</div>
+                  <div className="wt-user-name">{user?.nama_lengkap ?? '—'}</div>
+                  <div className="wt-user-role">{user?.role ?? '—'}</div>
                 </div>
                 <button className="wt-logout-btn" title="Keluar" onClick={handleLogout}>
                   <IconLogout />
@@ -206,7 +180,6 @@ function Shell() {
 
             {/* ── Main area ── */}
             <div className="wt-main">
-              {/* Topbar */}
               <header className="wt-topbar">
                 <div className="wt-search-wrap">
                   <span className="wt-search-icon"><IconSearch /></span>
@@ -220,14 +193,12 @@ function Shell() {
                   <div className="wt-topbar-user">
                     <div className="wt-topbar-avatar">{initials}</div>
                     <div className="wt-topbar-user-info">
-                      <div className="wt-topbar-user-name">{user!.nama_lengkap}</div>
-                      <div className="wt-topbar-user-role">{user!.role}</div>
+                      <div className="wt-topbar-user-name">{user?.nama_lengkap ?? '—'}</div>
+                      <div className="wt-topbar-user-role">{user?.role ?? '—'}</div>
                     </div>
                   </div>
                 </div>
               </header>
-
-              {/* Page content */}
               <main className="wt-content">
                 <Outlet />
               </main>
@@ -240,14 +211,13 @@ function Shell() {
   )
 }
 
-
 export const Route = createRootRoute({
   component: Shell,
   notFoundComponent: () => (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 16 }}>
-      <div style={{ fontSize: 48, fontWeight: 700, color: '#E5E7EB' }}>404</div>
-      <div style={{ fontSize: 16, fontWeight: 500 }}>Halaman tidak ditemukan</div>
-      <Link to="/" style={{ color: '#2E7D52', fontWeight: 600, textDecoration: 'none' }}>Kembali ke Dashboard</Link>
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh', gap:16 }}>
+      <div style={{ fontSize:48, fontWeight:700, color:'#E5E7EB' }}>404</div>
+      <div style={{ fontSize:16, fontWeight:500 }}>Halaman tidak ditemukan</div>
+      <Link to="/" style={{ color:'#2E7D52', fontWeight:600, textDecoration:'none' }}>Kembali ke Dashboard</Link>
     </div>
   ),
 })

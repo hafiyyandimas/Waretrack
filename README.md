@@ -1,6 +1,6 @@
 # Getting Started
 
-Latest Changes: Login Pages
+Latest Changes: User & Role Page, Exclusive Access for Roles, Audit Log (+New Tables)
 
 # Install dependencies
 
@@ -38,10 +38,9 @@ This project uses [Vitest](https://vitest.dev/) for testing. You can run the tes
 npm run test
 ```
 
-# Latest Issues (29 April 2026)
+# Latest Issues (12 Mei 2026)
 
-User need to manually redirect to localhost:xxx/login
-for first time login/signup, then to render the sidepanel user also need to refresh the pages.
+
 
 # Database Tables Format
 Queries used (postgresql):
@@ -92,6 +91,14 @@ create table public.pengguna (
   created_at timestamp without time zone not null,
   constraint pengguna_pkey primary key (id_pengguna)
 ) TABLESPACE pg_default;
+```
+```bash
+CREATE TABLE audit_log (
+  id_log     BIGSERIAL PRIMARY KEY,
+  aktor      VARCHAR(100) NOT NULL,
+  aksi       VARCHAR(200) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 ```
 
 ## Styling
