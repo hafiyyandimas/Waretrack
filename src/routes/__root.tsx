@@ -90,10 +90,11 @@ function Shell() {
   const [checked, setChecked] = useState(false)
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('auth_user')
-    if (stored) setUser(JSON.parse(stored))
-    setChecked(true)
-  }, [pathname])
+  // Cek localStorage dulu (ingat saya), lalu sessionStorage
+  const stored = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user')
+  if (stored) setUser(JSON.parse(stored))
+  setChecked(true)
+}, [pathname])
 
   if (!checked) {
     // For public pages, render immediately without waiting for auth check
@@ -145,9 +146,10 @@ function Shell() {
   const initials = user!.nama_lengkap?.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase() ?? 'U'
 
   function handleLogout() {
-    sessionStorage.removeItem('auth_user')
-    window.location.href = '/login'
-  }
+  localStorage.removeItem('auth_user')
+  sessionStorage.removeItem('auth_user')
+  window.location.href = '/login'
+}
 
   return (
     <html lang="id">

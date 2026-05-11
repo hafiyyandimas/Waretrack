@@ -1,6 +1,5 @@
 import { prisma } from '../db'
 import { createServerFn } from '@tanstack/react-start'
-import bcrypt from 'bcryptjs'
 
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -120,7 +119,6 @@ export const bulkCreateBarang = createServerFn({ method: 'POST' })
       harga: number
     }>
   }) => {
-    // Use upsert to handle duplicate SKUs gracefully
     const results = await Promise.allSettled(
       data.map(item =>
         prisma.barang.upsert({
@@ -147,7 +145,6 @@ export const bulkCreateBarang = createServerFn({ method: 'POST' })
         })
       )
     )
-
     const succeeded = results.filter(r => r.status === 'fulfilled').length
     const failed = results.filter(r => r.status === 'rejected').length
     return { succeeded, failed, total: data.length }
@@ -200,7 +197,6 @@ export const getBarChart = createServerFn({ method: 'GET' }).handler(async () =>
     days.map(async (day) => {
       const next = new Date(day)
       next.setDate(next.getDate() + 1)
-
       const [masuk, keluar] = await Promise.all([
         prisma.transaksi.aggregate({
           where: { jenis_transaksi: 'masuk', tanggal: { gte: day, lt: next } },
@@ -211,7 +207,6 @@ export const getBarChart = createServerFn({ method: 'GET' }).handler(async () =>
           _sum: { jumlah: true }
         })
       ])
-
       return {
         label: String(day.getDate()),
         in: masuk._sum.jumlah ?? 0,
@@ -219,7 +214,6 @@ export const getBarChart = createServerFn({ method: 'GET' }).handler(async () =>
       }
     })
   )
-
   return results
 })
 
@@ -266,6 +260,10 @@ export const getPengguna = createServerFn({ method: 'GET' }).handler(async () =>
   return await prisma.pengguna.findMany({ orderBy: { id_pengguna: 'asc' } })
 })
 
+export const getUsers = getPengguna
+
+// ─── Login ─────────────────────────────────────────────────────────────────
+
 export const loginUser = createServerFn({ method: 'POST' })
   // @ts-ignore
   .handler(async ({ data }: { data: { username: string; password: string } }) => {
@@ -278,10 +276,9 @@ export const loginUser = createServerFn({ method: 'POST' })
       }
     })
     if (!user) return { ok: false, error: 'Username atau email tidak ditemukan.' }
-
-    const match = await bcrypt.compare(data.password, user.password_hash)
-    if (!match) return { ok: false, error: 'Password salah.' }
-
+    if (data.password !== user.password_hash) {
+      return { ok: false, error: 'Password salah.' }
+    }
     return {
       ok: true,
       user: {
@@ -293,34 +290,27 @@ export const loginUser = createServerFn({ method: 'POST' })
     }
   })
 
-  // ─── Auth: Register ────────────────────────────────────────────────────────
-
+// ─── Register (Signup mandiri oleh user) ───────────────────────────────────
 
 export const registerUser = createServerFn({ method: 'POST' })
   // @ts-ignore
   .handler(async ({ data }: {
-    data: { username: string; password: string }
+    data: { nama_lengkap: string; username: string; password: string }
   }) => {
-    // Cek apakah username sudah dipakai (username disimpan di field email)
     const existing = await prisma.pengguna.findFirst({
       where: { email: data.username }
     })
-    if (existing) {
-      return { ok: false, error: 'Username sudah digunakan.' }
-    }
-
-    const hash = await bcrypt.hash(data.password, 10)
+    if (existing) return { ok: false, error: 'Username sudah digunakan.' }
 
     const user = await prisma.pengguna.create({
       data: {
-        nama_lengkap: data.username,
-        email:        data.username,   // username = email per spek
-        password_hash: hash,
-        role:         'Staff Inbound', // role default untuk pendaftar baru
-        updated_at:   new Date(),
+        nama_lengkap:  data.nama_lengkap,
+        email:         data.username,
+        password_hash: data.password,
+        role:          'Staff Inbound',
+        updated_at:    new Date(),
       }
     })
-
     return {
       ok: true,
       user: {
@@ -331,5 +321,36 @@ export const registerUser = createServerFn({ method: 'POST' })
       }
     }
   })
-// Alias so components can import getUsers
-export const getUsers = getPengguna
+
+// ─── Update User ────────────────────────────────────────────────────────────
+
+export const updateUser = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: {
+    data: {
+      id_pengguna: number
+      nama_lengkap?: string
+      email?: string
+      password?: string
+      role?: string
+    }
+  }) => {
+    const { id_pengguna, password, ...fields } = data
+    const row = await prisma.pengguna.update({
+      where: { id_pengguna },
+      data: {
+        ...fields,
+        ...(password ? { password_hash: password } : {}),
+        updated_at: new Date(),
+      }
+    })
+    return { ok: true, user: row }
+  })
+
+// ─── Delete User ────────────────────────────────────────────────────────────
+
+export const deleteUser = createServerFn({ method: 'POST' })
+  .handler(async ({ data }: { data: number }) => {
+    await prisma.pengguna.delete({ where: { id_pengguna: data } })
+    return { ok: true }
+  })
