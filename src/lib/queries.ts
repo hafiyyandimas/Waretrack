@@ -432,3 +432,59 @@ export const createTransaksiKeluar = createServerFn({ method: 'POST' })
 
     return transaksi
   })
+
+  // ─── Monthly Stats (6 bulan) ────────────────────────────────────────────────
+
+export const getMonthlyStats = createServerFn({ method: 'GET' }).handler(async () => {
+  const now    = new Date()
+  const months = Array.from({ length: 6 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - (5 - i), 1))
+  const sixMonthsAgo = months[0]
+
+  const allTrx = await prisma.transaksi.findMany({
+    where:   { tanggal: { gte: sixMonthsAgo } },
+    include: { barang: { select: { harga: true } } },
+  })
+
+  const monthNames = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des']
+
+  return months.map(monthDate => {
+    const m = monthDate.getMonth()
+    const y = monthDate.getFullYear()
+    const monthTrx = allTrx.filter(t => {
+      const td = new Date(t.tanggal)
+      return td.getMonth() === m && td.getFullYear() === y
+    })
+    const masuk  = monthTrx.filter(t => t.jenis_transaksi === 'masuk')
+    const keluar = monthTrx.filter(t => t.jenis_transaksi === 'keluar')
+    return {
+      label:       monthNames[m],
+      in:          masuk.reduce((s, t) => s + t.jumlah, 0),
+      out:         keluar.reduce((s, t) => s + t.jumlah, 0),
+      nilaiMasuk:  Math.round(masuk.reduce((s, t)  => s + Number(t.barang.harga) * t.jumlah, 0) / 1_000_000),
+      nilaiKeluar: Math.round(keluar.reduce((s, t) => s + Number(t.barang.harga) * t.jumlah, 0) / 1_000_000),
+    }
+  })
+})
+
+// ─── Top 5 Produk ───────────────────────────────────────────────────────────
+
+export const getTopProducts = createServerFn({ method: 'GET' }).handler(async () => {
+  const groups = await prisma.transaksi.groupBy({
+    by:      ['id_barang'],
+    _count:  { id_transaksi: true },
+    _sum:    { jumlah: true },
+    orderBy: { _count: { id_transaksi: 'desc' } },
+    take:    5,
+  })
+
+  return Promise.all(groups.map(async g => {
+    const b = await prisma.barang.findUnique({ where: { id_barang: g.id_barang } })
+    return {
+      nama_barang:      b?.nama_barang ?? '—',
+      sku:              b?.sku ?? '—',
+      jumlah_transaksi: g._count.id_transaksi,
+      total_qty:        g._sum.jumlah ?? 0,
+      total_nilai:      Number(b?.harga ?? 0) * (g._sum.jumlah ?? 0),
+    }
+  }))
+})
