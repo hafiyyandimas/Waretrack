@@ -8,16 +8,17 @@ datasource db {
 }
 
 model Pengguna {
-  id_pengguna   Int         @id @default(autoincrement())
-  nama_lengkap  String      @db.VarChar(100)
-  email         String      @unique @db.VarChar(100)
-  password_hash String      @db.VarChar(255)
-  role          String      @db.VarChar(50)
-  created_at    DateTime    @default(now())
-  updated_at    DateTime
-  transaksi     Transaksi[]
+    id_pengguna   Int         @id @default(autoincrement())
+    nama_lengkap  String      @db.VarChar(100)
+    email         String      @unique @db.VarChar(100)
+    password_hash String      @db.VarChar(255)
+    role          String      @db.VarChar(50)
+    created_at    DateTime    @default(now())
+    updated_at    DateTime
+    transaksi     Transaksi[]
+    auditLog      AuditLog[]  // ← tambah ini
 
-  @@map("pengguna")
+    @@map("pengguna")
 }
 
 model Barang {
@@ -55,10 +56,11 @@ model Transaksi {
 }
 
 model AuditLog {
-  id_log     Int      @id @default(autoincrement())
-  aktor      String   @db.VarChar(100)
-  aksi       String   @db.VarChar(200)
-  created_at DateTime @default(now())
+  id_log      Int       @id @default(autoincrement())
+  id_pengguna Int?
+  aksi        String    @db.VarChar(200)
+  created_at  DateTime  @default(now())
+  pengguna    Pengguna? @relation(fields: [id_pengguna], references: [id_pengguna], onDelete: SetNull)
 
   @@map("audit_log")
 }

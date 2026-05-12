@@ -31,13 +31,13 @@ const ROLES_CONFIG = [
   { nama:'Auditor',        perms:['Lihat Semua','Ekspor Laporan'] },
 ]
 
-// ── Helper: ambil aktor dari session ─────────────────────────────────────────
-function getAktor(): string {
+// ── Helper: ambil id_pengguna dari session ────────────────────────────────────
+function getAktorId(): number | null {
   try {
     const stored = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user')
-    if (!stored) return 'System'
-    return JSON.parse(stored).nama_lengkap ?? 'System'
-  } catch { return 'System' }
+    if (!stored) return null
+    return JSON.parse(stored).id_pengguna ?? null
+  } catch { return null }
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
@@ -88,9 +88,8 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       if (f.role !== 'Staff Inbound' && res.user) {
         await updateUser({ data: { id_pengguna: res.user.id_pengguna, role: f.role } })
       }
-      // Catat ke audit log
       await createAuditLog({ data: {
-        aktor: getAktor(),
+        id_pengguna: getAktorId(),
         aksi: `Menambahkan pengguna baru: ${f.nama_lengkap} (${f.role})`,
       }})
       return res
@@ -190,14 +189,13 @@ function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => v
   const mut = useMutation({
     mutationFn: async (f: EditUserForm) => {
       await updateUser({ data: {
-        id_pengguna: user.id_pengguna,
+        id_pengguna:  user.id_pengguna,
         nama_lengkap: f.nama_lengkap,
-        role: f.role,
+        role:         f.role,
         ...(f.password ? { password: f.password } : {}),
       }})
-      // Catat ke audit log
       await createAuditLog({ data: {
-        aktor: getAktor(),
+        id_pengguna: getAktorId(),
         aksi: `Mengubah data pengguna: ${user.nama_lengkap}${f.role !== user.role ? ` → role diubah ke ${f.role}` : ''}`,
       }})
     },
@@ -288,7 +286,7 @@ function DeleteUserModal({ user, onClose, onDeleted }: { user: any; onClose: () 
     mutationFn: async () => {
       await deleteUser({ data: user.id_pengguna })
       await createAuditLog({ data: {
-        aktor: getAktor(),
+        id_pengguna: getAktorId(),
         aksi: `Menghapus pengguna: ${user.nama_lengkap} (${user.role})`,
       }})
     },
@@ -349,12 +347,9 @@ function RowMenu({ onEdit, onDelete, onClose }: { onEdit: () => void; onDelete: 
 
 // ── Audit Log Icon ────────────────────────────────────────────────────────────
 function auditIcon(aksi: string): { bg: string; color: string; icon: JSX.Element } {
-  if (aksi.startsWith('Menambahkan'))
-    return { bg:'#EBF5EE', color:'#2E7D52', icon:<IcoMail /> }
-  if (aksi.startsWith('Mengubah'))
-    return { bg:'#EFF6FF', color:'#2563EB', icon:<IcoEdit /> }
-  if (aksi.startsWith('Menghapus'))
-    return { bg:'#FEF2F2', color:'#DC2626', icon:<IcoTrash /> }
+  if (aksi.startsWith('Menambahkan')) return { bg:'#EBF5EE', color:'#2E7D52', icon:<IcoMail /> }
+  if (aksi.startsWith('Mengubah'))   return { bg:'#EFF6FF', color:'#2563EB', icon:<IcoEdit /> }
+  if (aksi.startsWith('Menghapus'))  return { bg:'#FEF2F2', color:'#DC2626', icon:<IcoTrash /> }
   return { bg:'#F5F3FF', color:'#7C3AED', icon:<IcoLog /> }
 }
 
@@ -367,12 +362,12 @@ export function Users() {
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
-    queryFn: () => getUsers(),
+    queryFn:  () => getUsers(),
   })
 
   const { data: auditLogs = [], isLoading: auditLoading } = useQuery({
     queryKey: ['audit_log'],
-    queryFn: () => getAuditLog(),
+    queryFn:  () => getAuditLog(),
   })
 
   const totalUser = users.length
@@ -402,9 +397,9 @@ export function Users() {
       {/* ── Stat cards ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:20 }}>
         {[
-          { label:'Total Pengguna',  value: totalUser,  icon:<IcoUsers />,  iconBg:'#EBF5EE', iconColor:GREEN },
-          { label:'Total Role Aktif',value: totalRole,  icon:<IcoShield />, iconBg:'#F5F3FF', iconColor:'#7C3AED' },
-          { label:'Super Admin',     value: users.filter((u:any) => u.role === 'Super Admin').length, icon:<IcoShield />, iconBg:'#FEF9C3', iconColor:'#CA8A04' },
+          { label:'Total Pengguna',   value: totalUser, icon:<IcoUsers />,  iconBg:'#EBF5EE', iconColor:GREEN },
+          { label:'Total Role Aktif', value: totalRole, icon:<IcoShield />, iconBg:'#F5F3FF', iconColor:'#7C3AED' },
+          { label:'Super Admin',      value: users.filter((u:any) => u.role === 'Super Admin').length, icon:<IcoShield />, iconBg:'#FEF9C3', iconColor:'#CA8A04' },
         ].map((s, i) => (
           <div key={i} style={{ background:'#fff', borderRadius:14, border:'1px solid #EAECF0', padding:'16px 20px', display:'flex', alignItems:'center', gap:16 }}>
             <div style={{ width:44, height:44, borderRadius:12, background:s.iconBg, color:s.iconColor, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{s.icon}</div>
@@ -529,7 +524,7 @@ export function Users() {
                   </div>
                   <div>
                     <div style={{ fontSize:13, color:'#374151', lineHeight:1.5 }}>
-                      <strong>{log.aktor}</strong> — {log.aksi}
+                      <strong>{log.pengguna?.nama_lengkap ?? 'Sistem'}</strong> — {log.aksi}
                     </div>
                     <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:3 }}>
                       {new Date(log.created_at).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}

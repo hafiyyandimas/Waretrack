@@ -361,11 +361,74 @@ export const getAuditLog = createServerFn({ method: 'GET' }).handler(async () =>
   return await prisma.auditLog.findMany({
     orderBy: { created_at: 'desc' },
     take: 30,
+    include: { pengguna: { select: { nama_lengkap: true } } },
   })
 })
 
 export const createAuditLog = createServerFn({ method: 'POST' })
   // @ts-ignore
-  .handler(async ({ data }: { data: { aktor: string; aksi: string } }) => {
+  .handler(async ({ data }: { data: { id_pengguna: number | null; aksi: string } }) => {
     return await prisma.auditLog.create({ data })
+  })
+
+// ─── Create Transaksi Masuk ─────────────────────────────────────────────────
+
+export const createTransaksiMasuk = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: {
+    data: { id_barang: number; id_pengguna: number; jumlah: number; keterangan?: string; tanggal?: string }
+  }) => {
+    const barang = await prisma.barang.findUnique({ where: { id_barang: data.id_barang } })
+    if (!barang) throw new Error('Barang tidak ditemukan.')
+
+    const transaksi = await prisma.transaksi.create({
+      data: {
+        id_barang:       data.id_barang,
+        id_pengguna:     data.id_pengguna,
+        jenis_transaksi: 'masuk',
+        jumlah:          data.jumlah,
+        keterangan:      data.keterangan ?? null,
+        tanggal:         data.tanggal ? new Date(data.tanggal) : new Date(),
+        created_at:      new Date(),
+      }
+    })
+
+    await prisma.barang.update({
+      where: { id_barang: data.id_barang },
+      data:  { kuantitas_stok: { increment: data.jumlah }, updated_at: new Date() }
+    })
+
+    return transaksi
+  })
+
+// ─── Create Transaksi Keluar ────────────────────────────────────────────────
+
+export const createTransaksiKeluar = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: {
+    data: { id_barang: number; id_pengguna: number; jumlah: number; keterangan?: string; tanggal?: string }
+  }) => {
+    const barang = await prisma.barang.findUnique({ where: { id_barang: data.id_barang } })
+    if (!barang) throw new Error('Barang tidak ditemukan.')
+    if (barang.kuantitas_stok < data.jumlah)
+      throw new Error(`Stok tidak mencukupi. Tersedia: ${barang.kuantitas_stok} ${barang.satuan}.`)
+
+    const transaksi = await prisma.transaksi.create({
+      data: {
+        id_barang:       data.id_barang,
+        id_pengguna:     data.id_pengguna,
+        jenis_transaksi: 'keluar',
+        jumlah:          data.jumlah,
+        keterangan:      data.keterangan ?? null,
+        tanggal:         data.tanggal ? new Date(data.tanggal) : new Date(),
+        created_at:      new Date(),
+      }
+    })
+
+    await prisma.barang.update({
+      where: { id_barang: data.id_barang },
+      data:  { kuantitas_stok: { decrement: data.jumlah }, updated_at: new Date() }
+    })
+
+    return transaksi
   })

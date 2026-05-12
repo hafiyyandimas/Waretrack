@@ -1,6 +1,6 @@
 # Getting Started
 
-Latest Changes: User & Role Page, Exclusive Access for Roles, Audit Log (+New Tables)
+Latest Changes: Inbound + Outbound Pages Implementation
 
 # Install dependencies
 
@@ -93,12 +93,14 @@ create table public.pengguna (
 ) TABLESPACE pg_default;
 ```
 ```bash
-CREATE TABLE audit_log (
-  id_log     BIGSERIAL PRIMARY KEY,
-  aktor      VARCHAR(100) NOT NULL,
-  aksi       VARCHAR(200) NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
+create table public.audit_log (
+  id_log bigserial not null,
+  aksi character varying(200) not null,
+  created_at timestamp without time zone not null default now(),
+  id_pengguna bigint null,
+  constraint audit_log_pkey primary key (id_log),
+  constraint audit_log_id_pengguna_fkey foreign KEY (id_pengguna) references pengguna (id_pengguna) on delete set null
+) TABLESPACE pg_default;
 ```
 
 ## Styling
