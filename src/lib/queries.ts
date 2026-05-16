@@ -100,6 +100,23 @@ export const updateBarang = createServerFn({ method: 'POST' })
 
 export const deleteBarang = createServerFn({ method: 'POST' })
   .handler(async ({ data }: { data: string }) => {
+    const barang = await prisma.barang.findUnique({ where: { sku: data } })
+    if (!barang) return { ok: false, hasTransaksi: false, count: 0 }
+
+    const count = await prisma.transaksi.count({ where: { id_barang: barang.id_barang } })
+    if (count > 0) return { ok: false, hasTransaksi: true, count }
+
+    await prisma.barang.delete({ where: { sku: data } })
+    return { ok: true, hasTransaksi: false, count: 0 }
+  })
+
+// Tambah fungsi baru untuk cascade delete:
+export const deleteBarangForce = createServerFn({ method: 'POST' })
+  .handler(async ({ data }: { data: string }) => {
+    const barang = await prisma.barang.findUnique({ where: { sku: data } })
+    if (!barang) return { ok: false }
+
+    await prisma.transaksi.deleteMany({ where: { id_barang: barang.id_barang } })
     await prisma.barang.delete({ where: { sku: data } })
     return { ok: true }
   })

@@ -4,7 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fmtIDR, fmtNum, statusForStock } from '../lib/data'
 import {
   getBarang, getBarangBySku, getTransaksi,
-  createBarang, updateBarang, deleteBarang, bulkCreateBarang,
+  createBarang, updateBarang, deleteBarang,
+  deleteBarangForce,
+  bulkCreateBarang,
 } from '../lib/queries'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -205,7 +207,7 @@ function ImportModal({ onClose, onImported }: { onClose:()=>void; onImported:()=
             <div onDragOver={e=>{e.preventDefault();setDragOver(true)}} onDragLeave={()=>setDragOver(false)} onDrop={e=>{e.preventDefault();setDragOver(false);const f=e.dataTransfer.files[0];if(f)processFile(f)}} onClick={()=>fileRef.current?.click()}
               style={{ border:`2px dashed ${dragOver?'#2E7D52':'#EAECF0'}`, borderRadius:12, padding:'40px 24px', textAlign:'center', cursor:'pointer', background:dragOver?'#F0F9F4':'#FAFAFA', transition:'all 150ms' }}>
               <div style={{ fontSize:32, marginBottom:8 }}>📂</div>
-              <div style={{ fontWeight:600, marginBottom:4 }}>Seret & lepas file CSV di sini</div>
+              <div style={{ fontWeight:600, marginBottom:4 }}>Seret &amp; lepas file CSV di sini</div>
               <div style={{ fontSize:13, color:'#9CA3AF' }}>atau klik untuk pilih file</div>
               <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f)processFile(f)}} />
             </div>
@@ -272,20 +274,100 @@ function ImportModal({ onClose, onImported }: { onClose:()=>void; onImported:()=
 }
 
 // ── Modal: Hapus ──────────────────────────────────────────────────────────────
-function DeleteModal({ product, onClose, onDeleted }: { product: BarangRow; onClose:()=>void; onDeleted:()=>void }) {
-  const deleteMut = useMutation({ mutationFn: ()=>deleteBarang({data:product.sku}), onSuccess: onDeleted })
-  return (
+function DeleteModal({ product, onClose, onDeleted }: {
+  product: BarangRow
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const [step, setStep] = useState<'confirm' | 'warn'>('confirm')
+  const [trxCount, setTrxCount] = useState(0)
+
+  const deleteMut = useMutation({
+    mutationFn: () => deleteBarang({ data: product.sku }),
+    onSuccess: (res: any) => {
+      if (res.hasTransaksi) {
+        setTrxCount(res.count)
+        setStep('warn')
+      } else {
+        onDeleted()
+      }
+    },
+  })
+
+  const forceMut = useMutation({
+    mutationFn: () => deleteBarangForce({ data: product.sku }),
+    onSuccess: onDeleted,
+  })
+
+  // ── Step 1: Konfirmasi hapus biasa ──
+  if (step === 'confirm') return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e=>e.stopPropagation()} style={{ maxWidth:400 }}>
-        <div className="modal-title">Hapus Produk?</div>
-        <p className="modal-sub" style={{ marginBottom:16 }}>Tindakan ini tidak dapat dibatalkan.</p>
-        <div style={{ fontSize:14, lineHeight:1.6 }}>
-          Produk <strong>{product.nama_barang}</strong> (<span style={{fontFamily:'monospace'}}>{product.sku}</span>) akan dihapus permanen beserta semua data terkait.
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 400 }}>
+        <div style={{ padding: 'var(--modal-padding, 20px 24px 0)' }}>
+          <div className="modal-title">Hapus Produk?</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+            Tindakan ini tidak dapat dibatalkan.
+          </div>
+        </div>
+        <div className="modal-body">
+          <div style={{ fontSize: 14, lineHeight: 1.6 }}>
+            Produk <strong>{product.nama_barang}</strong>{' '}
+            (<span className="mono">{product.sku}</span>) akan dihapus permanen beserta semua data terkait.
+          </div>
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary btn-sm" onClick={onClose} disabled={deleteMut.isPending}>Batal</button>
-          <button className="btn btn-sm" style={{ background:'#DC2626', color:'#fff' }} onClick={()=>deleteMut.mutate()} disabled={deleteMut.isPending}>
-            {deleteMut.isPending?'Menghapus…':'Ya, Hapus'}
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={deleteMut.isPending}>Batal</button>
+          <button
+            className="btn btn-sm"
+            style={{ background: 'var(--danger)', color: '#fff', border: 'none' }}
+            onClick={() => deleteMut.mutate()}
+            disabled={deleteMut.isPending}
+          >
+            {deleteMut.isPending ? 'Memeriksa…' : 'Ya, Hapus'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── Step 2: Peringatan — produk ada di riwayat transaksi ──
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 440 }}>
+        <div style={{ padding: 'var(--modal-padding, 20px 24px 0)' }}>
+          <div className="modal-title" style={{ color: 'var(--danger)' }}>⚠ Produk Memiliki Riwayat Transaksi</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+            Harap baca peringatan di bawah sebelum melanjutkan.
+          </div>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{
+            padding: '12px 14px', borderRadius: 'var(--r-md)',
+            background: 'var(--danger-bg, #fee2e2)', border: '1px solid var(--danger)',
+            fontSize: 13, lineHeight: 1.6, color: 'var(--danger)',
+          }}>
+            Produk <strong>{product.nama_barang}</strong> masih tercatat dalam{' '}
+            <strong>{trxCount} riwayat transaksi</strong> (stok masuk/keluar).
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-2)' }}>
+            Jika dilanjutkan, <strong>semua {trxCount} transaksi terkait</strong> akan ikut dihapus permanen.
+            Data riwayat stok masuk/keluar untuk produk ini tidak dapat dipulihkan.
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 'var(--r-md)' }}>
+            💡 Alternatif: Biarkan produk ini dan hapus hanya data transaksinya satu per satu dari menu Stok Masuk / Stok Keluar.
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={forceMut.isPending}>
+            Batal, jangan hapus
+          </button>
+          <button
+            className="btn btn-sm"
+            style={{ background: 'var(--danger)', color: '#fff', border: 'none' }}
+            onClick={() => forceMut.mutate()}
+            disabled={forceMut.isPending}
+          >
+            {forceMut.isPending ? 'Menghapus…' : `Hapus produk + ${trxCount} transaksi`}
           </button>
         </div>
       </div>
@@ -294,16 +376,44 @@ function DeleteModal({ product, onClose, onDeleted }: { product: BarangRow; onCl
 }
 
 // ── Row Menu ──────────────────────────────────────────────────────────────────
-function RowMenu({ onEdit, onDelete, onClose }: { onEdit:()=>void; onDelete:()=>void; onClose:()=>void }) {
+function RowMenu({ onEdit, onDelete, onClose, anchor }: {
+  onEdit: () => void; onDelete: () => void; onClose: () => void; anchor: DOMRect | null
+}) {
+  const style: React.CSSProperties = anchor
+    ? {
+        position: 'fixed',
+        top: anchor.bottom + 4,
+        right: window.innerWidth - anchor.right,
+        zIndex: 50,
+      }
+    : {
+        position: 'absolute', right: 0, top: '100%', zIndex: 50,
+      }
+
   return (
     <>
-      <div style={{ position:'fixed', inset:0, zIndex:49 }} onClick={onClose} />
-      <div style={{ position:'absolute', right:0, top:'100%', zIndex:50, background:'#fff', border:'1px solid #EAECF0', borderRadius:10, boxShadow:'0 8px 24px rgba(0,0,0,0.1)', minWidth:160, padding:'4px 0' }}>
-        <button onClick={()=>{onClose();onEdit()}} style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'9px 14px', background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#374151' }} onMouseEnter={e=>(e.currentTarget.style.background='#F5F6FA')} onMouseLeave={e=>(e.currentTarget.style.background='none')}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={onClose} />
+      <div style={{
+        ...style,
+        background: 'var(--surface)', border: '1px solid var(--border)',
+        borderRadius: 'var(--r-md)', boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,.12))',
+        minWidth: 160, padding: '4px 0',
+      }}>
+        <button
+          onClick={() => { onClose(); onEdit() }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text)', textAlign: 'left' }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+        >
           <Ico.Edit /> Edit produk
         </button>
-        <div style={{ height:1, background:'#F5F6FA', margin:'2px 0' }} />
-        <button onClick={()=>{onClose();onDelete()}} style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'9px 14px', background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#DC2626' }} onMouseEnter={e=>(e.currentTarget.style.background='#FEE2E2')} onMouseLeave={e=>(e.currentTarget.style.background='none')}>
+        <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+        <button
+          onClick={() => { onClose(); onDelete() }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--danger)', textAlign: 'left' }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--danger-bg, #fee2e2)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+        >
           <Ico.Trash /> Hapus produk
         </button>
       </div>
@@ -332,6 +442,7 @@ export function Products() {
   const [deleteTarget, setDeleteTarget] = useState<BarangRow|null>(null)
   const [openMenuSku, setOpenMenuSku] = useState<string|null>(null)
   const [showCatDrop, setShowCatDrop] = useState(false)
+  const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null)
 
   const { data: barang = [], isLoading } = useQuery({ queryKey:['barang'], queryFn:()=>getBarang() })
   const invalidate = useCallback(()=>queryClient.invalidateQueries({queryKey:['barang']}),[queryClient])
@@ -350,7 +461,6 @@ export function Products() {
   const totalPages = Math.max(1, Math.ceil(filtered.length/PAGE_SIZE))
   const items = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
 
-  // Stat counts
   const totalProduk   = barang.length
   const produkAktif   = barang.filter((p:BarangRow)=>p.kuantitas_stok>0).length
   const stokRendah    = barang.filter((p:BarangRow)=>p.kuantitas_stok>0&&p.kuantitas_stok<=p.batas_minimum).length
@@ -377,7 +487,7 @@ export function Products() {
       {/* ── Stat cards ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:20 }}>
         {[
-          { label:'Total Produk',  value:fmtNum(totalProduk),  icon:<Ico.Box />,           iconBg:'#EBF5EE', iconColor:'#2E7D52' },
+          { label:'Total Produk',  value:fmtNum(totalProduk),  icon:<Ico.Box />,              iconBg:'#EBF5EE', iconColor:'#2E7D52' },
           { label:'Produk Aktif',  value:fmtNum(produkAktif),  icon:<Ico.Circle c="#16A34A"/>, iconBg:'#DCFCE7', iconColor:'#16A34A' },
           { label:'Stok Rendah',   value:fmtNum(stokRendah),   icon:<Ico.Circle c="#D97706"/>, iconBg:'#FEF9C3', iconColor:'#D97706' },
           { label:'Stok Habis',    value:fmtNum(stokHabis),    icon:<Ico.Circle c="#DC2626"/>, iconBg:'#FEE2E2', iconColor:'#DC2626' },
@@ -394,17 +504,14 @@ export function Products() {
 
       {/* ── Search + filter bar ── */}
       <div className="wt-card" style={{ marginBottom:16, padding:'16px 20px' }}>
-        {/* Search */}
         <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', border:'1px solid #EAECF0', borderRadius:10, background:'#FAFAFA', marginBottom:12 }}>
           <Ico.Search />
           <input style={{ flex:1, border:'none', background:'transparent', fontSize:14, outline:'none', color:'#1A2E22' }}
-            placeholder="Cari nama produk, SKU, atau supplier..."
+            placeholder="Cari nama produk, SKU, atau gudang..."
             value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} />
         </div>
 
-        {/* Filter row */}
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          {/* Category dropdown */}
           <div style={{ position:'relative' }}>
             <select
               value={filterCat}
@@ -416,7 +523,6 @@ export function Products() {
             </select>
           </div>
 
-          {/* Status dropdown */}
           <select
             value={filterStatus}
             onChange={e=>{ setFilterStatus(e.target.value); setPage(1) }}
@@ -454,7 +560,6 @@ export function Products() {
                 <th>Kategori</th>
                 <th className="num">Stok</th>
                 <th className="num">Harga</th>
-                <th>Supplier</th>
                 <th>Gudang</th>
                 <th style={{ width:40 }}></th>
               </tr>
@@ -481,13 +586,24 @@ export function Products() {
                       <div style={{ fontWeight:600 }}>{fmtNum(p.harga)}</div>
                     </td>
                     <td style={{ fontSize:13, color:'#6B7C74' }}>—</td>
-                    <td style={{ fontSize:13, color:'#6B7C74' }}>—</td>
-                    <td onClick={e=>e.stopPropagation()} style={{ position:'relative' }}>
-                      <button className="icon-btn" onClick={()=>setOpenMenuSku(openMenuSku===p.sku?null:p.sku)}>
+                    <td onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
+                      <button
+                        className="icon-btn"
+                        onClick={(e) => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                          if (openMenuSku === p.sku) { setOpenMenuSku(null); setMenuAnchor(null) }
+                          else { setOpenMenuSku(p.sku); setMenuAnchor(rect) }
+                        }}
+                      >
                         <Ico.More />
                       </button>
-                      {openMenuSku===p.sku && (
-                        <RowMenu onEdit={()=>setEditTarget(p)} onDelete={()=>setDeleteTarget(p)} onClose={()=>setOpenMenuSku(null)} />
+                      {openMenuSku === p.sku && (
+                        <RowMenu
+                          onEdit={() => setEditTarget(p)}
+                          onDelete={() => setDeleteTarget(p)}
+                          onClose={() => { setOpenMenuSku(null); setMenuAnchor(null) }}
+                          anchor={menuAnchor}
+                        />
                       )}
                     </td>
                   </tr>
@@ -614,7 +730,7 @@ export function ProductDetail({ sku }: { sku: string }) {
             </div>
           </div>
           <div className="wt-card">
-            <div className="wt-card-header"><div className="wt-card-title">Harga & Nilai</div></div>
+            <div className="wt-card-header"><div className="wt-card-title">Harga &amp; Nilai</div></div>
             <div className="wt-card-body">
               {[['Harga Beli (est.)',fmtIDR(Math.round(p.harga*0.72))],['Harga Jual',fmtIDR(p.harga)],['Margin (est.)','28%'],['Nilai Stok',fmtIDR(p.harga*p.kuantitas_stok)]].map(([k,v])=>(
                 <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #F5F6FA', fontSize:13.5 }}>

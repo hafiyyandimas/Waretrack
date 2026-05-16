@@ -127,19 +127,6 @@ input, textarea, select { font-family: inherit; }
 .wt-search-input::placeholder { color: #9CA3AF; }
 
 .wt-topbar-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
-.wt-notif-btn {
-  width: 38px; height: 38px; border-radius: 10px;
-  border: 1px solid #EAECF0; background: #fff;
-  cursor: pointer; position: relative;
-  display: flex; align-items: center; justify-content: center;
-  color: #6B7C74; transition: all 150ms;
-}
-.wt-notif-btn:hover { background: #F0F9F4; color: #2E7D52; }
-.wt-notif-dot {
-  position: absolute; top: 7px; right: 7px;
-  width: 8px; height: 8px; border-radius: 50%;
-  background: #EF4444; border: 2px solid #fff;
-}
 .wt-topbar-user { display: flex; align-items: center; gap: 10px; }
 .wt-topbar-avatar {
   width: 36px; height: 36px; border-radius: 50%;

@@ -186,10 +186,6 @@ function Shell() {
                   <input className="wt-search-input" type="text" placeholder="Cari produk, SKU, atau transaksi..." />
                 </div>
                 <div className="wt-topbar-right">
-                  <button className="wt-notif-btn">
-                    <IconBell />
-                    <span className="wt-notif-dot" />
-                  </button>
                   <div className="wt-topbar-user">
                     <div className="wt-topbar-avatar">{initials}</div>
                     <div className="wt-topbar-user-info">

@@ -176,8 +176,7 @@ export function Reports() {
           <h1 className="wt-page-title">Laporan &amp; Analitik</h1>
           <p style={{ fontSize:13, color:'#9CA3AF', marginTop:3 }}>Analisis performa dan tren inventaris gudang</p>
         </div>
-        <div style={{ display:'flex', gap:8 }}>
-          <button className="btn btn-secondary btn-sm"><IcoFilter /> Filter Periode</button>
+        <div style={{ display:'flex', gap:8 }}> 
           <button className="btn btn-primary btn-sm" onClick={exportCSV}><IcoDownload /> Ekspor CSV</button>
         </div>
       </div>
