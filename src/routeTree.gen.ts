@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
 import { Route as ReportsRouteImport } from './routes/reports'
-import { Route as OpnameRouteImport } from './routes/opname'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as IndexRouteImport } from './routes/index'
@@ -30,11 +29,6 @@ const UsersRoute = UsersRouteImport.update({
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OpnameRoute = OpnameRouteImport.update({
-  id: '/opname',
-  path: '/opname',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -87,7 +81,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
   '/login': typeof LoginRoute
-  '/opname': typeof OpnameRoute
   '/reports': typeof ReportsRoute
   '/users': typeof UsersRoute
   '/inbound/new': typeof InboundNewRoute
@@ -101,7 +94,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
   '/login': typeof LoginRoute
-  '/opname': typeof OpnameRoute
   '/reports': typeof ReportsRoute
   '/users': typeof UsersRoute
   '/inbound/new': typeof InboundNewRoute
@@ -116,7 +108,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
   '/login': typeof LoginRoute
-  '/opname': typeof OpnameRoute
   '/reports': typeof ReportsRoute
   '/users': typeof UsersRoute
   '/inbound/new': typeof InboundNewRoute
@@ -132,7 +123,6 @@ export interface FileRouteTypes {
     | '/'
     | '/alerts'
     | '/login'
-    | '/opname'
     | '/reports'
     | '/users'
     | '/inbound/new'
@@ -146,7 +136,6 @@ export interface FileRouteTypes {
     | '/'
     | '/alerts'
     | '/login'
-    | '/opname'
     | '/reports'
     | '/users'
     | '/inbound/new'
@@ -160,7 +149,6 @@ export interface FileRouteTypes {
     | '/'
     | '/alerts'
     | '/login'
-    | '/opname'
     | '/reports'
     | '/users'
     | '/inbound/new'
@@ -175,7 +163,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AlertsRoute: typeof AlertsRoute
   LoginRoute: typeof LoginRoute
-  OpnameRoute: typeof OpnameRoute
   ReportsRoute: typeof ReportsRoute
   UsersRoute: typeof UsersRoute
   InboundNewRoute: typeof InboundNewRoute
@@ -200,13 +187,6 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/opname': {
-      id: '/opname'
-      path: '/opname'
-      fullPath: '/opname'
-      preLoaderRoute: typeof OpnameRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -279,7 +259,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AlertsRoute: AlertsRoute,
   LoginRoute: LoginRoute,
-  OpnameRoute: OpnameRoute,
   ReportsRoute: ReportsRoute,
   UsersRoute: UsersRoute,
   InboundNewRoute: InboundNewRoute,

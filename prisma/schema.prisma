@@ -1,6 +1,5 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -8,59 +7,118 @@ datasource db {
 }
 
 model Pengguna {
-    id_pengguna   Int         @id @default(autoincrement())
-    nama_lengkap  String      @db.VarChar(100)
-    email         String      @unique @db.VarChar(100)
-    password_hash String      @db.VarChar(255)
-    role          String      @db.VarChar(50)
-    created_at    DateTime    @default(now())
-    updated_at    DateTime
-    transaksi     Transaksi[]
-    auditLog      AuditLog[]  // ← tambah ini
+  id_pengguna   BigInt   @id @default(autoincrement())
 
-    @@map("pengguna")
+  nama_lengkap  String   @db.VarChar(100)
+  email         String   @unique @db.VarChar(100)
+  password_hash String   @db.VarChar(255)
+  role          String   @db.VarChar(50)
+
+  created_at    DateTime @default(now()) @db.Timestamp(6)
+  updated_at    DateTime @db.Timestamp(6)
+
+  transaksi     Transaksi[]
+  audit_log     AuditLog[]
+
+  @@map("pengguna")
 }
 
 model Barang {
-  id_barang      Int         @id @default(autoincrement())
-  nama_barang    String      @db.VarChar(150)
-  sku            String      @unique @db.VarChar(50)
-  kategori       String?     @db.VarChar(100)
-  satuan         String      @db.VarChar(50)
-  kuantitas_stok Int         @default(0)
-  batas_minimum  Int         @default(0)
-  created_at     DateTime    @default(now())
-  updated_at     DateTime
-  harga          BigInt      @default(0)
+  id_barang      BigInt   @id @default(autoincrement())
+
+  nama_barang    String   @db.VarChar(150)
+  sku            String   @unique @db.VarChar(50)
+  kategori       String?  @db.VarChar(100)
+  satuan         String   @db.VarChar(50)
+
+  batas_minimum  Int
+  harga          BigInt
+
+  created_at     DateTime @default(now()) @db.Timestamp(6)
+  updated_at     DateTime @db.Timestamp(6)
+
   transaksi      Transaksi[]
+  stok_gudang    StokGudang[]
+
+  @@index([sku])
 
   @@map("barang")
 }
 
+model Gudang {
+  id_gudang     BigInt   @id @default(autoincrement())
+  nama_gudang   String   @db.VarChar(100)
+
+  stok_gudang   StokGudang[]
+  transaksi     Transaksi[]
+
+  @@map("gudang")
+}
+
+model StokGudang {
+  id_stok_gudang BigInt   @id @default(autoincrement())
+
+  id_barang      BigInt
+  id_gudang      BigInt
+
+  kuantitas_stok Int      @default(0)
+  updated_at     DateTime @default(now()) @db.Timestamp(6)
+
+  barang         Barang   @relation(fields: [id_barang], references: [id_barang], onDelete: Cascade)
+  gudang         Gudang   @relation(fields: [id_gudang], references: [id_gudang], onDelete: Restrict)
+
+  @@unique([id_barang, id_gudang], name: "id_barang_id_gudang")
+
+  @@index([id_barang])
+  @@index([id_gudang])
+
+  @@map("stok_gudang")
+}
+
 model Transaksi {
-  id_transaksi    Int      @id @default(autoincrement())
-  id_barang       Int
-  id_pengguna     Int
-  tanggal         DateTime @default(now())
-  jenis_transaksi String   @db.VarChar(20)
+  id_transaksi    BigInt   @id @default(autoincrement())
+
+  id_barang       BigInt
+  id_pengguna     BigInt
+  id_gudang       BigInt?
+
   jumlah          Int
+
+  jenis_transaksi String   @db.VarChar(50)
+
   keterangan      String?
-  created_at      DateTime @default(now())
-  barang          Barang   @relation(fields: [id_barang], references: [id_barang], onDelete: Cascade)
-  pengguna        Pengguna @relation(fields: [id_pengguna], references: [id_pengguna], onDelete: SetNull)
+
+  tanggal         DateTime @db.Timestamp(6)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+
+  barang          Barang   @relation(fields: [id_barang], references: [id_barang], onDelete: Restrict, map: "fk_transaksi_barang")
+
+  pengguna        Pengguna @relation(fields: [id_pengguna], references: [id_pengguna], onDelete: Restrict, map: "fk_transaksi_pengguna")
+
+  gudang          Gudang?  @relation(fields: [id_gudang], references: [id_gudang], onDelete: Restrict, map: "fk_transaksi_gudang")
 
   @@index([id_barang])
   @@index([id_pengguna])
+  @@index([id_gudang])
   @@index([tanggal])
+  @@index([jenis_transaksi])
+
   @@map("transaksi")
 }
 
 model AuditLog {
-  id_log      Int       @id @default(autoincrement())
-  id_pengguna Int?
-  aksi        String    @db.VarChar(200)
-  created_at  DateTime  @default(now())
-  pengguna    Pengguna? @relation(fields: [id_pengguna], references: [id_pengguna], onDelete: SetNull)
+  id_log       BigInt    @id @default(autoincrement())
+
+  id_pengguna  BigInt?
+
+  aksi         String    @db.VarChar(200)
+
+  created_at   DateTime  @default(now()) @db.Timestamp(6)
+
+  pengguna     Pengguna? @relation(fields: [id_pengguna], references: [id_pengguna], onDelete: SetNull)
+
+  @@index([id_pengguna])
+  @@index([created_at])
 
   @@map("audit_log")
 }

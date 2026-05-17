@@ -43,42 +43,11 @@ npm run test
 
 
 # Database Tables Format
+
+Queries used (PostgreSQL / Supabase):
+
+# Database Tables Format
 Queries used (postgresql):
-
-```bash
-create table public.transaksi (
-  jumlah integer not null,
-  id_pengguna bigint not null,
-  id_barang bigint not null,
-  id_transaksi bigserial not null,
-  keterangan text null,
-  jenis_transaksi character varying not null,
-  created_at timestamp without time zone not null,
-  tanggal timestamp without time zone not null,
-  constraint transaksi_pkey primary key (id_transaksi),
-  constraint fk_transaksi_barang foreign KEY (id_barang) references barang (id_barang),
-  constraint fk_transaksi_pengguna foreign KEY (id_pengguna) references pengguna (id_pengguna)
-) TABLESPACE pg_default;
-```
-
-
-
-```bash
-create table public.barang (
-  harga bigint not null,
-  batas_minimum integer not null,
-  kuantitas_stok integer not null,
-  id_barang bigserial not null,
-  satuan character varying not null,
-  kategori character varying null,
-  sku character varying not null,
-  nama_barang character varying not null,
-  updated_at timestamp without time zone not null,
-  created_at timestamp without time zone not null,
-  constraint barang_pkey primary key (id_barang),
-  constraint barang_sku_key unique (sku)
-) TABLESPACE pg_default;
-```
 
 ```bash
 create table public.pengguna (
@@ -92,14 +61,68 @@ create table public.pengguna (
   constraint pengguna_pkey primary key (id_pengguna)
 ) TABLESPACE pg_default;
 ```
+
 ```bash
 create table public.audit_log (
-  id_log bigserial not null,
-  aksi character varying(200) not null,
-  created_at timestamp without time zone not null default now(),
+  id_log bigint generated always as identity not null,
   id_pengguna bigint null,
+  aksi character varying not null,
+  created_at timestamp without time zone not null default now(),
   constraint audit_log_pkey primary key (id_log),
-  constraint audit_log_id_pengguna_fkey foreign KEY (id_pengguna) references pengguna (id_pengguna) on delete set null
+  constraint audit_log_id_pengguna_fkey foreign KEY (id_pengguna) references pengguna (id_pengguna)
+) TABLESPACE pg_default;
+```
+
+```bash
+create table public.barang (
+  id_barang bigint generated always as identity not null,
+  nama_barang character varying not null,
+  sku character varying not null,
+  kategori character varying null,
+  satuan character varying not null,
+  batas_minimum integer not null,
+  harga bigint not null,
+  created_at timestamp without time zone not null default now(),
+  updated_at timestamp without time zone not null default now(),
+  constraint barang_pkey primary key (id_barang),
+  constraint barang_sku_key unique (sku)
+) TABLESPACE pg_default;
+```
+```bash
+create table public.gudang (
+  id_gudang bigint generated always as identity not null,
+  nama_gudang character varying not null,
+  constraint gudang_pkey primary key (id_gudang)
+) TABLESPACE pg_default;
+```
+```bash
+create table public.stok_gudang (
+  id_stok_gudang bigint generated always as identity not null,
+  id_barang bigint not null,
+  id_gudang bigint not null,
+  kuantitas_stok integer not null default 0,
+  updated_at timestamp without time zone not null default now(),
+  constraint stok_gudang_pkey primary key (id_stok_gudang),
+  constraint stok_gudang_barang_fkey foreign KEY (id_barang) references barang (id_barang),
+  constraint stok_gudang_gudang_fkey foreign KEY (id_gudang) references gudang (id_gudang)
+) TABLESPACE pg_default;
+```
+
+```bash
+create table public.transaksi (
+  jumlah integer not null,
+  id_pengguna bigint not null,
+  id_barang bigint not null,
+  id_transaksi bigint not null generated always as identity,
+  keterangan text null,
+  jenis_transaksi character varying not null,
+  created_at timestamp without time zone not null,
+  tanggal timestamp without time zone not null,
+  id_gudang bigint null,
+  constraint transaksi_pkey primary key (id_transaksi),
+  constraint fk_transaksi_barang foreign KEY (id_barang) references barang (id_barang),
+  constraint fk_transaksi_pengguna foreign KEY (id_pengguna) references pengguna (id_pengguna),
+  constraint fk_transaksi_gudang foreign KEY (id_gudang) references gudang (id_gudang)
 ) TABLESPACE pg_default;
 ```
 

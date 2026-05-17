@@ -1,45 +1,110 @@
 import { prisma } from '../db'
 import { createServerFn } from '@tanstack/react-start'
 
+// ─── Types ──────────────────────────────────────────────────────────────────
 
-// ─── Types ─────────────────────────────────────────────────────────────────
+export type GudangRow = {
+  id_gudang: number
+  nama_gudang: string
+}
 
-type BarangRow = {
+export type StokGudangRow = {
+  id_stok_gudang: number
+  id_barang: number
+  id_gudang: number
+  kuantitas_stok: number
+  updated_at: Date
+  gudang: GudangRow
+}
+
+export type BarangRow = {
   id_barang: number
   nama_barang: string
   sku: string
   kategori: string | null
   satuan: string
-  kuantitas_stok: number
   batas_minimum: number
   harga: number
   created_at: Date
   updated_at: Date
+  total_stok: number          // SUM dari semua stok_gudang
+  stok_gudang: StokGudangRow[]
 }
 
-// ─── Barang ────────────────────────────────────────────────────────────────
+// ─── Gudang ─────────────────────────────────────────────────────────────────
+
+export const getGudang = createServerFn({ method: 'GET' }).handler(async () => {
+  const rows = await prisma.gudang.findMany({ orderBy: { id_gudang: 'asc' } })
+  return rows as GudangRow[]
+})
+
+// ─── Helpers internal ────────────────────────────────────────────────────────
+
+function mapBarang(r: any): BarangRow {
+  const stok_gudang: StokGudangRow[] = (r.stok_gudang ?? []).map((sg: any) => ({
+    id_stok_gudang: sg.id_stok_gudang,
+    id_barang:      sg.id_barang,
+    id_gudang:      sg.id_gudang,
+    kuantitas_stok: sg.kuantitas_stok,
+    updated_at:     sg.updated_at,
+    gudang: {
+      id_gudang:   sg.gudang.id_gudang,
+      nama_gudang: sg.gudang.nama_gudang,
+    },
+  }))
+  const total_stok = stok_gudang.reduce((sum, sg) => sum + sg.kuantitas_stok, 0)
+  return {
+    id_barang:    r.id_barang,
+    nama_barang:  r.nama_barang,
+    sku:          r.sku,
+    kategori:     r.kategori,
+    satuan:       r.satuan,
+    batas_minimum: r.batas_minimum,
+    harga:        Number(r.harga),
+    created_at:   r.created_at,
+    updated_at:   r.updated_at,
+    total_stok,
+    stok_gudang,
+  }
+}
+
+const barangInclude = {
+  stok_gudang: {
+    include: { gudang: true },
+    orderBy: { gudang: { id_gudang: 'asc' as const } },
+  },
+}
+
+// ─── Barang ──────────────────────────────────────────────────────────────────
 
 export const getBarang = createServerFn({ method: 'GET' }).handler(async () => {
-  const rows = await prisma.barang.findMany({ orderBy: { id_barang: 'asc' } })
-  return rows.map((r): BarangRow => ({ ...r, harga: Number(r.harga) }))
+  const rows = await prisma.barang.findMany({
+    orderBy: { id_barang: 'asc' },
+    include: barangInclude,
+  })
+  return rows.map(mapBarang)
 })
 
 export const getLowStock = createServerFn({ method: 'GET' }).handler(async () => {
   const rows = await prisma.barang.findMany({
-    where: { kuantitas_stok: { lte: prisma.barang.fields.batas_minimum } },
-    orderBy: { kuantitas_stok: 'asc' }
+    include: barangInclude,
+    orderBy: { id_barang: 'asc' },
   })
-  return rows.map((r): BarangRow => ({ ...r, harga: Number(r.harga) }))
+  return rows.map(mapBarang).filter(r => r.total_stok <= r.batas_minimum)
 })
 
 export const getBarangBySku = createServerFn({ method: 'GET' })
   .handler(async ({ data }: { data: string }) => {
-    const row = await prisma.barang.findUnique({ where: { sku: data } })
+    const row = await prisma.barang.findUnique({
+      where: { sku: data },
+      include: barangInclude,
+    })
     if (!row) return null
-    return { ...row, harga: Number(row.harga) } as BarangRow
+    return mapBarang(row)
   })
 
-// ─── Create Barang ─────────────────────────────────────────────────────────
+// ─── Create Barang ───────────────────────────────────────────────────────────
+// Stok awal sudah TIDAK ada di sini — diisi lewat Stok Masuk
 
 export const createBarang = createServerFn({ method: 'POST' })
   // @ts-ignore
@@ -49,27 +114,26 @@ export const createBarang = createServerFn({ method: 'POST' })
       sku: string
       kategori?: string
       satuan: string
-      kuantitas_stok: number
       batas_minimum: number
       harga: number
     }
   }) => {
     const row = await prisma.barang.create({
       data: {
-        nama_barang: data.nama_barang,
-        sku: data.sku,
-        kategori: data.kategori || null,
-        satuan: data.satuan,
-        kuantitas_stok: data.kuantitas_stok,
+        nama_barang:   data.nama_barang,
+        sku:           data.sku,
+        kategori:      data.kategori || null,
+        satuan:        data.satuan,
         batas_minimum: data.batas_minimum,
-        harga: data.harga,
-        updated_at: new Date(),
-      }
+        harga:         data.harga,
+        updated_at:    new Date(),
+      },
+      include: barangInclude,
     })
-    return { ...row, harga: Number(row.harga) } as BarangRow
+    return mapBarang(row)
   })
 
-// ─── Update Barang ─────────────────────────────────────────────────────────
+// ─── Update Barang ───────────────────────────────────────────────────────────
 
 export const updateBarang = createServerFn({ method: 'POST' })
   // @ts-ignore
@@ -79,7 +143,6 @@ export const updateBarang = createServerFn({ method: 'POST' })
       nama_barang?: string
       kategori?: string | null
       satuan?: string
-      kuantitas_stok?: number
       batas_minimum?: number
       harga?: number
     }
@@ -89,14 +152,14 @@ export const updateBarang = createServerFn({ method: 'POST' })
       where: { sku },
       data: {
         ...fields,
-        harga: fields.harga !== undefined ? fields.harga : undefined,
         updated_at: new Date(),
-      }
+      },
+      include: barangInclude,
     })
-    return { ...row, harga: Number(row.harga) } as BarangRow
+    return mapBarang(row)
   })
 
-// ─── Delete Barang ─────────────────────────────────────────────────────────
+// ─── Delete Barang ───────────────────────────────────────────────────────────
 
 export const deleteBarang = createServerFn({ method: 'POST' })
   .handler(async ({ data }: { data: string }) => {
@@ -106,22 +169,78 @@ export const deleteBarang = createServerFn({ method: 'POST' })
     const count = await prisma.transaksi.count({ where: { id_barang: barang.id_barang } })
     if (count > 0) return { ok: false, hasTransaksi: true, count }
 
+    // stok_gudang akan CASCADE DELETE otomatis
     await prisma.barang.delete({ where: { sku: data } })
     return { ok: true, hasTransaksi: false, count: 0 }
   })
 
-// Tambah fungsi baru untuk cascade delete:
 export const deleteBarangForce = createServerFn({ method: 'POST' })
   .handler(async ({ data }: { data: string }) => {
     const barang = await prisma.barang.findUnique({ where: { sku: data } })
     if (!barang) return { ok: false }
 
     await prisma.transaksi.deleteMany({ where: { id_barang: barang.id_barang } })
+    // stok_gudang CASCADE DELETE
     await prisma.barang.delete({ where: { sku: data } })
     return { ok: true }
   })
 
-// ─── Bulk Create (Import CSV) ──────────────────────────────────────────────
+// ─── Stok Gudang ─────────────────────────────────────────────────────────────
+
+// Upsert stok gudang (tambah atau kurangi, dipanggil dari transaksi)
+async function upsertStokGudang(id_barang: number, id_gudang: number, delta: number) {
+  const existing = await prisma.stokGudang.findUnique({
+    where: { id_barang_id_gudang: { id_barang, id_gudang } },
+  })
+
+  if (existing) {
+    const newStok = existing.kuantitas_stok + delta
+    if (newStok < 0) throw new Error(`Stok di gudang tidak mencukupi. Tersedia: ${existing.kuantitas_stok}.`)
+    return await prisma.stokGudang.update({
+      where: { id_barang_id_gudang: { id_barang, id_gudang } },
+      data:  { kuantitas_stok: newStok, updated_at: new Date() },
+    })
+  } else {
+    if (delta < 0) throw new Error('Stok di gudang ini belum ada.')
+    return await prisma.stokGudang.create({
+      data: { id_barang, id_gudang, kuantitas_stok: delta, updated_at: new Date() },
+    })
+  }
+}
+
+// Update stok gudang langsung (untuk edit manual dari detail produk)
+export const updateStokGudang = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: {
+    data: { id_barang: number; id_gudang: number; kuantitas_stok: number }
+  }) => {
+    const existing = await prisma.stokGudang.findUnique({
+      where: { id_barang_id_gudang: { id_barang: data.id_barang, id_gudang: data.id_gudang } },
+    })
+    if (existing) {
+      return await prisma.stokGudang.update({
+        where: { id_barang_id_gudang: { id_barang: data.id_barang, id_gudang: data.id_gudang } },
+        data:  { kuantitas_stok: data.kuantitas_stok, updated_at: new Date() },
+      })
+    } else {
+      return await prisma.stokGudang.create({
+        data: { id_barang: data.id_barang, id_gudang: data.id_gudang, kuantitas_stok: data.kuantitas_stok, updated_at: new Date() },
+      })
+    }
+  })
+
+// Hapus stok produk dari gudang tertentu (hapus semua stok di gudang itu)
+export const deleteStokGudang = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: { data: { id_barang: number; id_gudang: number } }) => {
+    await prisma.stokGudang.deleteMany({
+      where: { id_barang: data.id_barang, id_gudang: data.id_gudang },
+    })
+    return { ok: true }
+  })
+
+// ─── Bulk Create (Import CSV) ─────────────────────────────────────────────────
+// CSV import: tidak ada stok awal, hanya data produk
 
 export const bulkCreateBarang = createServerFn({ method: 'POST' })
   // @ts-ignore
@@ -131,7 +250,6 @@ export const bulkCreateBarang = createServerFn({ method: 'POST' })
       sku: string
       kategori?: string
       satuan: string
-      kuantitas_stok: number
       batas_minimum: number
       harga: number
     }>
@@ -141,66 +259,131 @@ export const bulkCreateBarang = createServerFn({ method: 'POST' })
         prisma.barang.upsert({
           where: { sku: item.sku },
           update: {
-            nama_barang: item.nama_barang,
-            kategori: item.kategori || null,
-            satuan: item.satuan,
-            kuantitas_stok: item.kuantitas_stok,
+            nama_barang:   item.nama_barang,
+            kategori:      item.kategori || null,
+            satuan:        item.satuan,
             batas_minimum: item.batas_minimum,
-            harga: item.harga,
-            updated_at: new Date(),
+            harga:         item.harga,
+            updated_at:    new Date(),
           },
           create: {
-            nama_barang: item.nama_barang,
-            sku: item.sku,
-            kategori: item.kategori || null,
-            satuan: item.satuan,
-            kuantitas_stok: item.kuantitas_stok,
+            nama_barang:   item.nama_barang,
+            sku:           item.sku,
+            kategori:      item.kategori || null,
+            satuan:        item.satuan,
             batas_minimum: item.batas_minimum,
-            harga: item.harga,
-            updated_at: new Date(),
-          }
+            harga:         item.harga,
+            updated_at:    new Date(),
+          },
         })
       )
     )
     const succeeded = results.filter(r => r.status === 'fulfilled').length
-    const failed = results.filter(r => r.status === 'rejected').length
+    const failed    = results.filter(r => r.status === 'rejected').length
     return { succeeded, failed, total: data.length }
   })
 
-// ─── Dashboard Stats ───────────────────────────────────────────────────────
+// ─── Dashboard Stats ──────────────────────────────────────────────────────────
 
 export const getDashboardStats = createServerFn({ method: 'GET' }).handler(async () => {
-  const [totalSKU, barangAll, lowStockCount, transaksiHariIni] = await Promise.all([
+  const now            = new Date()
+  const monthStart     = new Date(now.getFullYear(), now.getMonth(), 1)
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+
+  const [
+    totalSKU, barangAll, transaksiHariIni,
+    masukBulanIni, keluarBulanIni,
+    masukBulanLalu, keluarBulanLalu,
+    totalSKUBulanLalu,
+  ] = await Promise.all([
     prisma.barang.count(),
-    prisma.barang.findMany({ select: { kuantitas_stok: true, harga: true, batas_minimum: true } }),
-    prisma.barang.count({
-      where: { kuantitas_stok: { lte: prisma.barang.fields.batas_minimum } }
+    prisma.barang.findMany({
+      select: {
+        kategori:  true,
+        harga:     true,
+        batas_minimum: true,
+        stok_gudang: { select: { kuantitas_stok: true } },
+      },
     }),
     prisma.transaksi.findMany({
-      where: { tanggal: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
-      include: { barang: true, pengguna: true },
+      where:   { tanggal: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+      include: { barang: true, pengguna: true, gudang: true },
       orderBy: { tanggal: 'desc' },
-      take: 5
-    })
+      take:    5,
+    }),
+    prisma.transaksi.aggregate({
+      where: { jenis_transaksi: 'masuk',  tanggal: { gte: monthStart } },
+      _sum:  { jumlah: true },
+    }),
+    prisma.transaksi.aggregate({
+      where: { jenis_transaksi: 'keluar', tanggal: { gte: monthStart } },
+      _sum:  { jumlah: true },
+    }),
+    prisma.transaksi.aggregate({
+      where: { jenis_transaksi: 'masuk',  tanggal: { gte: lastMonthStart, lt: monthStart } },
+      _sum:  { jumlah: true },
+    }),
+    prisma.transaksi.aggregate({
+      where: { jenis_transaksi: 'keluar', tanggal: { gte: lastMonthStart, lt: monthStart } },
+      _sum:  { jumlah: true },
+    }),
+    prisma.barang.count({ where: { created_at: { lt: monthStart } } }),
   ])
 
-  const nilaiInventaris = barangAll.reduce(
-    (sum: number, b: { harga: bigint | number; kuantitas_stok: number }) =>
-      sum + Number(b.harga) * b.kuantitas_stok, 0
-  )
+  const barangMapped = barangAll.map(b => ({
+    kategori:      b.kategori,
+    harga:         Number(b.harga),
+    batas_minimum: b.batas_minimum,
+    total_stok:    b.stok_gudang.reduce((s, sg) => s + sg.kuantitas_stok, 0),
+  }))
+
+  const nilaiInventaris = barangMapped.reduce((sum, b) => sum + b.harga * b.total_stok, 0)
+  const lowStockCount   = barangMapped.filter(b => b.total_stok > 0 && b.total_stok <= b.batas_minimum).length
+
+  // ── Kategori distribusi (pie chart) ──
+  const katMap: Record<string, number> = {}
+  barangMapped.forEach(b => {
+    const kat = b.kategori ?? 'Lainnya'
+    katMap[kat] = (katMap[kat] ?? 0) + b.harga * b.total_stok
+  })
+  const totalKatVal = Object.values(katMap).reduce((s, v) => s + v, 0) || 1
+  let kategoriDistribusi = Object.entries(katMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, value]) => ({ label, value, pct: Math.round((value / totalKatVal) * 100) }))
+  // Normalisasi agar total = 100%
+  const pctSum = kategoriDistribusi.reduce((s, k) => s + k.pct, 0)
+  if (kategoriDistribusi.length && pctSum !== 100) kategoriDistribusi[0].pct += 100 - pctSum
+
+  // ── Persentase perubahan ──
+  const masukIni   = masukBulanIni._sum.jumlah   ?? 0
+  const keluarIni  = keluarBulanIni._sum.jumlah  ?? 0
+  const masukLalu  = masukBulanLalu._sum.jumlah  ?? 0
+  const keluarLalu = keluarBulanLalu._sum.jumlah ?? 0
+
+  function calcPct(now: number, prev: number): number | null {
+    if (prev === 0) return now > 0 ? 100 : null
+    return Math.round(((now - prev) / prev) * 100)
+  }
 
   return {
     totalSKU,
     nilaiInventaris,
     lowStockCount,
+    masukBulanIni:     masukIni,
+    keluarBulanIni:    keluarIni,
+    masukPct:          calcPct(masukIni, masukLalu),
+    keluarPct:         calcPct(keluarIni, keluarLalu),
+    skuPct:            calcPct(totalSKU, totalSKUBulanLalu),
+    kategoriDistribusi,
     transaksiHariIni: transaksiHariIni.map(t => ({
       ...t,
-      barang: { ...t.barang, harga: Number(t.barang.harga) }
-    }))
+      barang: { ...t.barang, harga: Number(t.barang.harga) },
+    })),
   }
 })
 
-// ─── Bar Chart ─────────────────────────────────────────────────────────────
+// ─── Bar Chart (7 hari) ───────────────────────────────────────────────────────
 
 export const getBarChart = createServerFn({ method: 'GET' }).handler(async () => {
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -217,61 +400,61 @@ export const getBarChart = createServerFn({ method: 'GET' }).handler(async () =>
       const [masuk, keluar] = await Promise.all([
         prisma.transaksi.aggregate({
           where: { jenis_transaksi: 'masuk', tanggal: { gte: day, lt: next } },
-          _sum: { jumlah: true }
+          _sum:  { jumlah: true },
         }),
         prisma.transaksi.aggregate({
           where: { jenis_transaksi: 'keluar', tanggal: { gte: day, lt: next } },
-          _sum: { jumlah: true }
-        })
+          _sum:  { jumlah: true },
+        }),
       ])
       return {
         label: String(day.getDate()),
-        in: masuk._sum.jumlah ?? 0,
-        out: keluar._sum.jumlah ?? 0,
+        in:    masuk._sum.jumlah ?? 0,
+        out:   keluar._sum.jumlah ?? 0,
       }
     })
   )
   return results
 })
 
-// ─── Transaksi ─────────────────────────────────────────────────────────────
+// ─── Transaksi ────────────────────────────────────────────────────────────────
 
 export const getTransaksi = createServerFn({ method: 'GET' }).handler(async () => {
   const rows = await prisma.transaksi.findMany({
-    include: { barang: true, pengguna: true },
-    orderBy: { tanggal: 'desc' }
+    include: { barang: true, pengguna: true, gudang: true },
+    orderBy: { tanggal: 'desc' },
   })
   return rows.map(t => ({
     ...t,
-    barang: { ...t.barang, harga: Number(t.barang.harga) }
+    barang: { ...t.barang, harga: Number(t.barang.harga) },
   }))
 })
 
 export const getTransaksiMasuk = createServerFn({ method: 'GET' }).handler(async () => {
   const rows = await prisma.transaksi.findMany({
-    where: { jenis_transaksi: 'masuk' },
-    include: { barang: true, pengguna: true },
-    orderBy: { tanggal: 'desc' }
+    where:   { jenis_transaksi: 'masuk' },
+    include: { barang: true, pengguna: true, gudang: true },
+    orderBy: { tanggal: 'desc' },
   })
   return rows.map(t => ({
     ...t,
-    barang: { ...t.barang, harga: Number(t.barang.harga) }
+    barang: { ...t.barang, harga: Number(t.barang.harga) },
   }))
 })
 
 export const getTransaksiKeluar = createServerFn({ method: 'GET' }).handler(async () => {
   const rows = await prisma.transaksi.findMany({
-    where: { jenis_transaksi: 'keluar' },
-    include: { barang: true, pengguna: true },
-    orderBy: { tanggal: 'desc' }
+    where:   { jenis_transaksi: 'keluar' },
+    include: { barang: true, pengguna: true, gudang: true },
+    orderBy: { tanggal: 'desc' },
   })
   return rows.map(t => ({
     ...t,
-    barang: { ...t.barang, harga: Number(t.barang.harga) }
+    barang: { ...t.barang, harga: Number(t.barang.harga) },
   }))
 })
 
-// ─── Pengguna ──────────────────────────────────────────────────────────────
+// ─── Pengguna ─────────────────────────────────────────────────────────────────
 
 export const getPengguna = createServerFn({ method: 'GET' }).handler(async () => {
   return await prisma.pengguna.findMany({ orderBy: { id_pengguna: 'asc' } })
@@ -279,7 +462,7 @@ export const getPengguna = createServerFn({ method: 'GET' }).handler(async () =>
 
 export const getUsers = getPengguna
 
-// ─── Login ─────────────────────────────────────────────────────────────────
+// ─── Login ────────────────────────────────────────────────────────────────────
 
 export const loginUser = createServerFn({ method: 'POST' })
   // @ts-ignore
@@ -289,13 +472,11 @@ export const loginUser = createServerFn({ method: 'POST' })
         OR: [
           { email: data.username },
           { nama_lengkap: data.username },
-        ]
-      }
+        ],
+      },
     })
     if (!user) return { ok: false, error: 'Username atau email tidak ditemukan.' }
-    if (data.password !== user.password_hash) {
-      return { ok: false, error: 'Password salah.' }
-    }
+    if (data.password !== user.password_hash) return { ok: false, error: 'Password salah.' }
     return {
       ok: true,
       user: {
@@ -303,20 +484,18 @@ export const loginUser = createServerFn({ method: 'POST' })
         nama_lengkap: user.nama_lengkap,
         email:        user.email,
         role:         user.role,
-      }
+      },
     }
   })
 
-// ─── Register (Signup mandiri oleh user) ───────────────────────────────────
+// ─── Register ─────────────────────────────────────────────────────────────────
 
 export const registerUser = createServerFn({ method: 'POST' })
   // @ts-ignore
   .handler(async ({ data }: {
     data: { nama_lengkap: string; username: string; password: string }
   }) => {
-    const existing = await prisma.pengguna.findFirst({
-      where: { email: data.username }
-    })
+    const existing = await prisma.pengguna.findFirst({ where: { email: data.username } })
     if (existing) return { ok: false, error: 'Username sudah digunakan.' }
 
     const user = await prisma.pengguna.create({
@@ -326,7 +505,7 @@ export const registerUser = createServerFn({ method: 'POST' })
         password_hash: data.password,
         role:          'Staff Inbound',
         updated_at:    new Date(),
-      }
+      },
     })
     return {
       ok: true,
@@ -335,11 +514,11 @@ export const registerUser = createServerFn({ method: 'POST' })
         nama_lengkap: user.nama_lengkap,
         email:        user.email,
         role:         user.role,
-      }
+      },
     }
   })
 
-// ─── Update User ────────────────────────────────────────────────────────────
+// ─── Update User ──────────────────────────────────────────────────────────────
 
 export const updateUser = createServerFn({ method: 'POST' })
   // @ts-ignore
@@ -359,12 +538,12 @@ export const updateUser = createServerFn({ method: 'POST' })
         ...fields,
         ...(password ? { password_hash: password } : {}),
         updated_at: new Date(),
-      }
+      },
     })
     return { ok: true, user: row }
   })
 
-// ─── Delete User ────────────────────────────────────────────────────────────
+// ─── Delete User ──────────────────────────────────────────────────────────────
 
 export const deleteUser = createServerFn({ method: 'POST' })
   .handler(async ({ data }: { data: number }) => {
@@ -372,12 +551,12 @@ export const deleteUser = createServerFn({ method: 'POST' })
     return { ok: true }
   })
 
-// ─── Audit Log ──────────────────────────────────────────────────────────────
+// ─── Audit Log ────────────────────────────────────────────────────────────────
 
 export const getAuditLog = createServerFn({ method: 'GET' }).handler(async () => {
   return await prisma.auditLog.findMany({
     orderBy: { created_at: 'desc' },
-    take: 30,
+    take:    30,
     include: { pengguna: { select: { nama_lengkap: true } } },
   })
 })
@@ -388,73 +567,99 @@ export const createAuditLog = createServerFn({ method: 'POST' })
     return await prisma.auditLog.create({ data })
   })
 
-// ─── Create Transaksi Masuk ─────────────────────────────────────────────────
+// ─── Create Transaksi Masuk ───────────────────────────────────────────────────
 
 export const createTransaksiMasuk = createServerFn({ method: 'POST' })
   // @ts-ignore
   .handler(async ({ data }: {
-    data: { id_barang: number; id_pengguna: number; jumlah: number; keterangan?: string; tanggal?: string }
+    data: {
+      id_barang: number
+      id_pengguna: number
+      id_gudang: number
+      jumlah: number
+      keterangan?: string
+      tanggal?: string
+    }
   }) => {
     const barang = await prisma.barang.findUnique({ where: { id_barang: data.id_barang } })
     if (!barang) throw new Error('Barang tidak ditemukan.')
+
+    const gudang = await prisma.gudang.findUnique({ where: { id_gudang: data.id_gudang } })
+    if (!gudang) throw new Error('Gudang tidak ditemukan.')
 
     const transaksi = await prisma.transaksi.create({
       data: {
         id_barang:       data.id_barang,
         id_pengguna:     data.id_pengguna,
+        id_gudang:       data.id_gudang,
         jenis_transaksi: 'masuk',
         jumlah:          data.jumlah,
         keterangan:      data.keterangan ?? null,
         tanggal:         data.tanggal ? new Date(data.tanggal) : new Date(),
         created_at:      new Date(),
-      }
+      },
     })
 
-    await prisma.barang.update({
-      where: { id_barang: data.id_barang },
-      data:  { kuantitas_stok: { increment: data.jumlah }, updated_at: new Date() }
-    })
+    // Update stok di gudang yang dipilih
+    await upsertStokGudang(data.id_barang, data.id_gudang, data.jumlah)
 
     return transaksi
   })
 
-// ─── Create Transaksi Keluar ────────────────────────────────────────────────
+// ─── Create Transaksi Keluar ──────────────────────────────────────────────────
 
 export const createTransaksiKeluar = createServerFn({ method: 'POST' })
   // @ts-ignore
   .handler(async ({ data }: {
-    data: { id_barang: number; id_pengguna: number; jumlah: number; keterangan?: string; tanggal?: string }
+    data: {
+      id_barang: number
+      id_pengguna: number
+      id_gudang: number
+      jumlah: number
+      keterangan?: string
+      tanggal?: string
+    }
   }) => {
     const barang = await prisma.barang.findUnique({ where: { id_barang: data.id_barang } })
     if (!barang) throw new Error('Barang tidak ditemukan.')
-    if (barang.kuantitas_stok < data.jumlah)
-      throw new Error(`Stok tidak mencukupi. Tersedia: ${barang.kuantitas_stok} ${barang.satuan}.`)
+
+    const gudang = await prisma.gudang.findUnique({ where: { id_gudang: data.id_gudang } })
+    if (!gudang) throw new Error('Gudang tidak ditemukan.')
+
+    // Validasi stok di gudang spesifik
+    const stokGudang = await prisma.stokGudang.findUnique({
+      where: { id_barang_id_gudang: { id_barang: data.id_barang, id_gudang: data.id_gudang } },
+    })
+    if (!stokGudang || stokGudang.kuantitas_stok < data.jumlah) {
+      const tersedia = stokGudang?.kuantitas_stok ?? 0
+      throw new Error(`Stok di ${gudang.nama_gudang} tidak mencukupi. Tersedia: ${tersedia} ${barang.satuan}.`)
+    }
 
     const transaksi = await prisma.transaksi.create({
       data: {
         id_barang:       data.id_barang,
         id_pengguna:     data.id_pengguna,
+        id_gudang:       data.id_gudang,
         jenis_transaksi: 'keluar',
         jumlah:          data.jumlah,
         keterangan:      data.keterangan ?? null,
         tanggal:         data.tanggal ? new Date(data.tanggal) : new Date(),
         created_at:      new Date(),
-      }
+      },
     })
 
-    await prisma.barang.update({
-      where: { id_barang: data.id_barang },
-      data:  { kuantitas_stok: { decrement: data.jumlah }, updated_at: new Date() }
-    })
+    await upsertStokGudang(data.id_barang, data.id_gudang, -data.jumlah)
 
     return transaksi
   })
 
-  // ─── Monthly Stats (6 bulan) ────────────────────────────────────────────────
+// ─── Monthly Stats (6 bulan) ──────────────────────────────────────────────────
 
 export const getMonthlyStats = createServerFn({ method: 'GET' }).handler(async () => {
   const now    = new Date()
-  const months = Array.from({ length: 6 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - (5 - i), 1))
+  const months = Array.from({ length: 6 }, (_, i) =>
+    new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+  )
   const sixMonthsAgo = months[0]
 
   const allTrx = await prisma.transaksi.findMany({
@@ -483,7 +688,7 @@ export const getMonthlyStats = createServerFn({ method: 'GET' }).handler(async (
   })
 })
 
-// ─── Top 5 Produk ───────────────────────────────────────────────────────────
+// ─── Top 5 Produk ─────────────────────────────────────────────────────────────
 
 export const getTopProducts = createServerFn({ method: 'GET' }).handler(async () => {
   const groups = await prisma.transaksi.groupBy({
@@ -494,14 +699,21 @@ export const getTopProducts = createServerFn({ method: 'GET' }).handler(async ()
     take:    5,
   })
 
-  return Promise.all(groups.map(async g => {
-    const b = await prisma.barang.findUnique({ where: { id_barang: g.id_barang } })
-    return {
-      nama_barang:      b?.nama_barang ?? '—',
-      sku:              b?.sku ?? '—',
-      jumlah_transaksi: g._count.id_transaksi,
-      total_qty:        g._sum.jumlah ?? 0,
-      total_nilai:      Number(b?.harga ?? 0) * (g._sum.jumlah ?? 0),
-    }
-  }))
+  return Promise.all(
+    groups.map(async g => {
+      const b = await prisma.barang.findUnique({
+        where:   { id_barang: g.id_barang },
+        include: { stok_gudang: true },
+      })
+      const total_stok = b?.stok_gudang.reduce((s, sg) => s + sg.kuantitas_stok, 0) ?? 0
+      return {
+        nama_barang:      b?.nama_barang ?? '—',
+        sku:              b?.sku ?? '—',
+        jumlah_transaksi: g._count.id_transaksi,
+        total_qty:        g._sum.jumlah ?? 0,
+        total_nilai:      Number(b?.harga ?? 0) * (g._sum.jumlah ?? 0),
+        total_stok,
+      }
+    })
+  )
 })
