@@ -130,7 +130,7 @@ export function Reports() {
 
   // ── Stats derivasi ──
   const totalSKU      = barang.length
-  const nilaiInv      = barang.reduce((s: number, b: any) => s + Number(b.harga) * b.kuantitas_stok, 0)
+  const nilaiInv = barang.reduce((s: number, b: any) => s + Number(b.harga) * (b.total_stok ?? 0), 0)
   const bulanIni      = monthly[monthly.length - 1]
   const totalMasuk    = bulanIni?.in  ?? 0
   const totalKeluar   = bulanIni?.out ?? 0
@@ -140,7 +140,7 @@ export function Reports() {
   const katMap: Record<string, number> = {}
   ;(barang as any[]).forEach((b: any) => {
     const k = b.kategori ?? 'Lainnya'
-    katMap[k] = (katMap[k] ?? 0) + Number(b.harga) * b.kuantitas_stok
+    katMap[k] = (katMap[k] ?? 0) + Number(b.harga) * (b.total_stok ?? 0)
   })
   const totalKatVal = Object.values(katMap).reduce((s, v) => s + v, 0) || 1
   const katData = Object.entries(katMap)

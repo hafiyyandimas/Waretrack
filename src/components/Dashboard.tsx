@@ -77,34 +77,41 @@ function LineChartSVG({ data }: { data: { label: string; in: number; out: number
   )
 }
 
-// ── Pie Chart SVG ─────────────────────────────────────────────────────────────
-const CATEGORY_COLORS = ['#2E7D52', '#4F9EF8', '#F59E0B', '#8B5CF6', '#9CA3AF']
-const CATEGORY_LABELS = ['Elektronik', 'Furniture', 'Makanan', 'Pakaian', 'Lainnya']
-const CATEGORY_PCT    = [35, 25, 20, 15, 5]
+const PIE_COLORS = ['#2E7D52', '#4F9EF8', '#F59E0B', '#8B5CF6', '#9CA3AF', '#EC4899']
 
-function PieChartSVG() {
+function PieChartSVG({ data }: { data: { label: string; pct: number }[] }) {
+  if (!data.length) return (
+    <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: 13 }}>
+      Belum ada data kategori
+    </div>
+  )
+
   const cx = 80, cy = 80, r = 60
   let acc = 0
-  const slices = CATEGORY_PCT.map((pct, i) => {
+  const slices = data.map((d, i) => {
     const start = (acc / 100) * 2 * Math.PI - Math.PI / 2
-    acc += pct
-    const end = (acc / 100) * 2 * Math.PI - Math.PI / 2
-    const x1 = cx + r * Math.cos(start), y1 = cy + r * Math.sin(start)
-    const x2 = cx + r * Math.cos(end),   y2 = cy + r * Math.sin(end)
-    const large = pct > 50 ? 1 : 0
-    return { d: `M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`, color: CATEGORY_COLORS[i] }
+    acc += d.pct
+    const end  = (acc / 100) * 2 * Math.PI - Math.PI / 2
+    const x1   = cx + r * Math.cos(start), y1 = cy + r * Math.sin(start)
+    const x2   = cx + r * Math.cos(end),   y2 = cy + r * Math.sin(end)
+    const large = d.pct > 50 ? 1 : 0
+    return {
+      d:     `M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`,
+      color: PIE_COLORS[i % PIE_COLORS.length],
+    }
   })
+
   return (
     <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
       <svg viewBox="0 0 160 160" width="160" height="160" style={{ flexShrink: 0 }}>
         {slices.map((s, i) => <path key={i} d={s.d} fill={s.color} />)}
       </svg>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {CATEGORY_LABELS.map((label, i) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
-            <span style={{ width: 10, height: 10, borderRadius: '50%', background: CATEGORY_COLORS[i], flexShrink: 0 }} />
-            <span style={{ color: '#374151', flex: 1 }}>{label}</span>
-            <span style={{ fontWeight: 600, color: '#1A2E22' }}>{CATEGORY_PCT[i]}%</span>
+        {data.map((d, i) => (
+          <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: PIE_COLORS[i % PIE_COLORS.length], flexShrink: 0 }} />
+            <span style={{ color: '#374151', flex: 1 }}>{d.label}</span>
+            <span style={{ fontWeight: 600, color: '#1A2E22' }}>{d.pct}%</span>
           </div>
         ))}
       </div>
@@ -120,36 +127,49 @@ export function Dashboard() {
   const { data: barData } = useQuery({ queryKey: ['bar-chart'],       queryFn: () => getBarChart() })
   const { data: lowStock } = useQuery({ queryKey: ['low-stock'],       queryFn: () => getLowStock() })
 
-  const statCards = [
-    {
-      label: 'Total Produk',
-      value: fmtNum(stats?.totalSKU ?? 0),
-      icon: <IconBox />,
-      iconBg: '#EBF5EE', iconColor: '#2E7D52',
-      delta: '12% dari bulan lalu', deltaKind: 'up',
-    },
-    {
-      label: 'Stok Masuk (Bulan Ini)',
-      value: fmtNum(stats?.transaksiHariIni?.filter((t: any) => t.jenis_transaksi === 'masuk').reduce((s: number, t: any) => s + t.jumlah, 0) ?? 0),
-      icon: <IconTrendUp />,
-      iconBg: '#EBF5EE', iconColor: '#16A34A',
-      delta: '8% dari bulan lalu', deltaKind: 'up',
-    },
-    {
-      label: 'Stok Keluar (Bulan Ini)',
-      value: fmtNum(stats?.transaksiHariIni?.filter((t: any) => t.jenis_transaksi === 'keluar').reduce((s: number, t: any) => s + t.jumlah, 0) ?? 0),
-      icon: <IconTrendDown />,
-      iconBg: '#FEF9C3', iconColor: '#D97706',
-      delta: '5% dari bulan lalu', deltaKind: 'down',
-    },
-    {
-      label: 'Alert Stok Kritis',
-      value: fmtNum(stats?.lowStockCount ?? 0),
-      icon: <IconAlert />,
-      iconBg: '#FEE2E2', iconColor: '#DC2626',
-      delta: 'Perlu perhatian', deltaKind: 'warn',
-    },
-  ]
+// Helper format delta
+function fmtDelta(pct: number | null | undefined): string {
+  if (pct === null || pct === undefined) return 'Bulan ini'
+  if (pct > 0)  return `+${pct}% dari bulan lalu`
+  if (pct < 0)  return `${pct}% dari bulan lalu`
+  return 'Sama dengan bulan lalu'
+}
+
+// Ganti statCards:
+const statCards = [
+  {
+    label: 'Total Produk',
+    value: fmtNum(stats?.totalSKU ?? 0),
+    icon: <IconBox />,
+    iconBg: '#EBF5EE', iconColor: '#2E7D52',
+    delta: fmtDelta(stats?.skuPct),
+    deltaKind: (stats?.skuPct ?? 0) >= 0 ? 'up' : 'down',
+  },
+  {
+    label: 'Stok Masuk (Bulan Ini)',
+    value: fmtNum(stats?.masukBulanIni ?? 0),
+    icon: <IconTrendUp />,
+    iconBg: '#EBF5EE', iconColor: '#16A34A',
+    delta: fmtDelta(stats?.masukPct),
+    deltaKind: (stats?.masukPct ?? 0) >= 0 ? 'up' : 'down',
+  },
+  {
+    label: 'Stok Keluar (Bulan Ini)',
+    value: fmtNum(stats?.keluarBulanIni ?? 0),
+    icon: <IconTrendDown />,
+    iconBg: '#FEF9C3', iconColor: '#D97706',
+    delta: fmtDelta(stats?.keluarPct),
+    deltaKind: (stats?.keluarPct ?? 0) <= 0 ? 'down' : 'up',
+  },
+  {
+    label: 'Alert Stok Kritis',
+    value: fmtNum(stats?.lowStockCount ?? 0),
+    icon: <IconAlert />,
+    iconBg: '#FEE2E2', iconColor: '#DC2626',
+    delta: 'Perlu perhatian',
+    deltaKind: 'warn',
+  },
+]
 
   const quickActions = [
     { icon: <IconInboundSmall />, label: 'Terima Barang',  color: '#EBF5EE', textColor: '#2E7D52', nav: '/inbound/new' },
@@ -217,7 +237,7 @@ export function Dashboard() {
             </div>
           </div>
           <div className="wt-card-body">
-            <PieChartSVG />
+            <PieChartSVG data={stats?.kategoriDistribusi ?? []} />
           </div>
         </div>
       </div>
