@@ -46,9 +46,6 @@ npm run test
 
 Queries used (PostgreSQL / Supabase):
 
-# Database Tables Format
-Queries used (postgresql):
-
 ```bash
 create table public.pengguna (
   id_pengguna bigserial not null,
