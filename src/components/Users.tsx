@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getUsers, registerUser, updateUser, deleteUser, getAuditLog, createAuditLog } from '../lib/queries'
+import { getUsers, registerUser, updateUser, deleteUser, getAuditLog, createAuditLog, approvePasswordReset, cancelPasswordReset } from '../lib/queries'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 function IcoDownload() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> }
@@ -17,27 +17,91 @@ function IcoLog()      { return <svg width="16" height="16" viewBox="0 0 24 24" 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const GREEN = '#2E7D52'
 
-const ROLE_OPTIONS = [
-  'Super Admin', 'Admin Gudang', 'Manajer',
-  'Staff Inbound', 'Staff Outbound', 'Auditor',
-]
+const ROLE_OPTIONS = ['Admin', 'Staff Gudang', 'Operator Gudang']
 
 const ROLES_CONFIG = [
-  { nama:'Super Admin',    perms:['Semua Akses'] },
-  { nama:'Admin Gudang',   perms:['Kelola Stok','Kelola User','Laporan'] },
-  { nama:'Manajer',        perms:['Kelola Stok','Lihat Laporan'] },
-  { nama:'Staff Inbound',  perms:['Terima Barang','Scan SKU'] },
-  { nama:'Staff Outbound', perms:['Keluarkan Barang','Scan SKU'] },
-  { nama:'Auditor',        perms:['Lihat Semua','Ekspor Laporan'] },
+  {
+    nama: 'Admin',
+    perms: ['Semua Akses', 'Kelola User', 'Kelola Gudang'],
+    iconBg: '#FEF9C3', iconColor: '#CA8A04',
+  },
+  {
+    nama: 'Staff Gudang',
+    perms: ['Kelola Stok', 'Lihat Laporan', 'Akses Gudang'],
+    iconBg: '#EBF5EE', iconColor: GREEN,
+  },
+  {
+    nama: 'Operator Gudang',
+    perms: ['Kelola Stok', 'Lihat Laporan'],
+    iconBg: '#EFF6FF', iconColor: '#2563EB',
+  },
 ]
 
-// ── Helper: ambil id_pengguna dari session ────────────────────────────────────
+// ── Helper ────────────────────────────────────────────────────────────────────
 function getAktorId(): number | null {
   try {
     const stored = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user')
     if (!stored) return null
     return JSON.parse(stored).id_pengguna ?? null
   } catch { return null }
+}
+
+// ── ResetPasswordCell ─────────────────────────────────────────────────────────
+function ResetPasswordCell({ user }: { user: any }) {
+  const qc    = useQueryClient()
+  const token = user.token as string | null
+
+  const approveMut = useMutation({
+    mutationFn: () => approvePasswordReset({ data: Number(user.id_pengguna) }),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+  const cancelMut = useMutation({
+    mutationFn: () => cancelPasswordReset({ data: Number(user.id_pengguna) }),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+
+  const isPending = token === 'pending'
+  const isActive  = token && token !== 'pending' && (() => {
+    const [, expStr] = token.split(':')
+    return Date.now() < parseInt(expStr, 10)
+  })()
+
+  if (!token) return <span style={{ fontSize:12, color:'#9CA3AF' }}>—</span>
+
+  if (isPending) return (
+    <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+      <span style={{ fontSize:11.5, padding:'3px 8px', borderRadius:20, background:'#FEF9C3', color:'#CA8A04', fontWeight:600 }}>Menunggu</span>
+      <button className="btn btn-primary btn-sm" style={{ fontSize:11, padding:'4px 10px' }}
+        onClick={() => approveMut.mutate()} disabled={approveMut.isPending}>
+        {approveMut.isPending ? '…' : 'Setujui'}
+      </button>
+      <button className="btn btn-sm" style={{ fontSize:11, padding:'4px 10px', background:'#FEE2E2', color:'#DC2626', border:'none' }}
+        onClick={() => cancelMut.mutate()} disabled={cancelMut.isPending}>
+        Tolak
+      </button>
+    </div>
+  )
+
+  if (isActive) {
+    const [code] = token.split(':')
+    return (
+      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+        <span style={{ fontSize:11.5, padding:'3px 8px', borderRadius:20, background:'#DCFCE7', color:'#16A34A', fontWeight:600 }}>
+          Token: <span style={{ fontFamily:'monospace' }}>{code}</span>
+        </span>
+        <button className="btn btn-sm" style={{ fontSize:11, padding:'4px 10px', background:'#FEE2E2', color:'#DC2626', border:'none' }}
+          onClick={() => cancelMut.mutate()}>
+          Batalkan
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <span style={{ fontSize:11.5, color:'#9CA3AF', cursor:'pointer' }} onClick={() => cancelMut.mutate()}>
+      Kadaluarsa ✕
+    </span>
+  )
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
@@ -60,7 +124,7 @@ function PermTag({ label }: { label: string }) {
   )
 }
 
-// ── Shared modal styles ───────────────────────────────────────────────────────
+// ── Modal styles ──────────────────────────────────────────────────────────────
 const overlay:     React.CSSProperties = { position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }
 const modalBox:    React.CSSProperties = { background:'#fff', borderRadius:16, padding:'28px 32px', width:'100%', maxWidth:460, boxShadow:'0 8px 32px rgba(0,0,0,0.15)' }
 const modalTitle:  React.CSSProperties = { fontSize:18, fontWeight:700, color:'#1A2E22', margin:'0 0 4px' }
@@ -76,7 +140,7 @@ const modalFooter: React.CSSProperties = { display:'flex', justifyContent:'flex-
 interface AddUserForm { nama_lengkap: string; username: string; password: string; role: string }
 
 function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm]           = useState<AddUserForm>({ nama_lengkap:'', username:'', password:'', role:'Staff Inbound' })
+  const [form, setForm]           = useState<AddUserForm>({ nama_lengkap:'', username:'', password:'', role:'Operator Gudang' })
   const [errors, setErrors]       = useState<Partial<AddUserForm>>({})
   const [serverErr, setServerErr] = useState('')
   const queryClient               = useQueryClient()
@@ -85,7 +149,7 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     mutationFn: async (f: AddUserForm) => {
       const res = await registerUser({ data: { nama_lengkap: f.nama_lengkap, username: f.username, password: f.password } })
       if (!res.ok) throw new Error(res.error)
-      if (f.role !== 'Staff Inbound' && res.user) {
+      if (res.user) {
         await updateUser({ data: { id_pengguna: res.user.id_pengguna, role: f.role } })
       }
       await createAuditLog({ data: {
@@ -310,11 +374,9 @@ function DeleteUserModal({ user, onClose, onDeleted }: { user: any; onClose: () 
         </p>
         <div style={modalFooter}>
           <button className="btn btn-secondary btn-sm" onClick={onClose} disabled={mut.isPending}>Batal</button>
-          <button
-            className="btn btn-sm"
+          <button className="btn btn-sm"
             style={{ background:'#DC2626', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:13, fontWeight:600, cursor:'pointer' }}
-            onClick={() => mut.mutate()} disabled={mut.isPending}
-          >
+            onClick={() => mut.mutate()} disabled={mut.isPending}>
             {mut.isPending ? 'Menghapus…' : 'Ya, Hapus'}
           </button>
         </div>
@@ -324,11 +386,30 @@ function DeleteUserModal({ user, onClose, onDeleted }: { user: any; onClose: () 
 }
 
 // ── Row Action Menu ───────────────────────────────────────────────────────────
-function RowMenu({ onEdit, onDelete, onClose }: { onEdit: () => void; onDelete: () => void; onClose: () => void }) {
+function RowMenu({ anchorEl, onEdit, onDelete, onClose }: {
+  anchorEl: HTMLElement; onEdit: () => void; onDelete: () => void; onClose: () => void
+}) {
+  const rect = anchorEl.getBoundingClientRect()
+  const spaceBelow = window.innerHeight - rect.bottom
+  const top = spaceBelow < 100
+    ? rect.top - 90   // muncul ke atas kalau ruang bawah sempit
+    : rect.bottom + 4 // muncul ke bawah normal
+
   return (
     <>
       <div style={{ position:'fixed', inset:0, zIndex:49 }} onClick={onClose} />
-      <div style={{ position:'absolute', right:0, top:'100%', zIndex:50, background:'#fff', border:'1px solid #EAECF0', borderRadius:10, boxShadow:'0 8px 24px rgba(0,0,0,.10)', minWidth:150, padding:'4px 0' }}>
+      <div style={{
+        position:'fixed',
+        top,
+        right: window.innerWidth - rect.right,
+        zIndex: 50,
+        background:'#fff',
+        border:'1px solid #EAECF0',
+        borderRadius:10,
+        boxShadow:'0 8px 24px rgba(0,0,0,.10)',
+        minWidth:150,
+        padding:'4px 0',
+      }}>
         <button onClick={() => { onClose(); onEdit() }}
           style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'9px 14px', background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#374151', textAlign:'left' }}
           onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
@@ -358,7 +439,7 @@ export function Users() {
   const [showAdd, setShowAdd]           = useState(false)
   const [editTarget, setEditTarget]     = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
-  const [openMenuId, setOpenMenuId]     = useState<number | null>(null)
+  const [menuState, setMenuState] = useState<{ id: number; el: HTMLElement } | null>(null)
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
@@ -371,11 +452,11 @@ export function Users() {
   })
 
   const totalUser = users.length
-  const totalRole = new Set(users.map((u: any) => u.role)).size || ROLE_OPTIONS.length
+  const adminCount = (users as any[]).filter(u => u.role === 'Admin').length
 
   const rolesWithCount = ROLES_CONFIG.map(r => ({
     ...r,
-    pengguna: users.filter((u: any) => u.role === r.nama).length,
+    pengguna: (users as any[]).filter(u => u.role === r.nama).length,
   }))
 
   return (
@@ -397,9 +478,9 @@ export function Users() {
       {/* ── Stat cards ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:20 }}>
         {[
-          { label:'Total Pengguna',   value: totalUser, icon:<IcoUsers />,  iconBg:'#EBF5EE', iconColor:GREEN },
-          { label:'Total Role Aktif', value: totalRole, icon:<IcoShield />, iconBg:'#F5F3FF', iconColor:'#7C3AED' },
-          { label:'Super Admin',      value: users.filter((u:any) => u.role === 'Super Admin').length, icon:<IcoShield />, iconBg:'#FEF9C3', iconColor:'#CA8A04' },
+          { label:'Total Pengguna',  value: totalUser,    icon:<IcoUsers />, iconBg:'#EBF5EE', iconColor:GREEN },
+          { label:'Total Role',      value: ROLE_OPTIONS.length, icon:<IcoShield />, iconBg:'#F5F3FF', iconColor:'#7C3AED' },
+          { label:'Admin',           value: adminCount,   icon:<IcoShield />, iconBg:'#FEF9C3', iconColor:'#CA8A04' },
         ].map((s, i) => (
           <div key={i} style={{ background:'#fff', borderRadius:14, border:'1px solid #EAECF0', padding:'16px 20px', display:'flex', alignItems:'center', gap:16 }}>
             <div style={{ width:44, height:44, borderRadius:12, background:s.iconBg, color:s.iconColor, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{s.icon}</div>
@@ -431,6 +512,7 @@ export function Users() {
                   <th>Nama</th>
                   <th>Role</th>
                   <th>Dibuat</th>
+                  <th>Reset Password</th>
                   <th style={{ width:48 }}></th>
                 </tr>
               </thead>
@@ -454,21 +536,27 @@ export function Users() {
                     <td style={{ fontSize:12, color:'#9CA3AF', whiteSpace:'nowrap' }}>
                       {new Date(u.created_at).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' })}
                     </td>
-                    <td style={{ position:'relative' }}>
-                      <button
-                        onClick={() => setOpenMenuId(openMenuId === u.id_pengguna ? null : u.id_pengguna)}
-                        style={{ background:'none', border:'none', cursor:'pointer', color:'#9CA3AF', padding:'4px 8px', borderRadius:6 }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                      ><IcoMore /></button>
-                      {openMenuId === u.id_pengguna && (
-                        <RowMenu
-                          onEdit={() => setEditTarget(u)}
-                          onDelete={() => setDeleteTarget(u)}
-                          onClose={() => setOpenMenuId(null)}
-                        />
-                      )}
+                    <td>
+                      <ResetPasswordCell user={u} />
                     </td>
+                    <td style={{ position:'relative' }}>
+                    <button
+                      onClick={(e) => setMenuState(
+                        menuState?.id === u.id_pengguna ? null : { id: u.id_pengguna, el: e.currentTarget }
+                      )}
+                      style={{ background:'none', border:'none', cursor:'pointer', color:'#9CA3AF', padding:'4px 8px', borderRadius:6 }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                    ><IcoMore /></button>
+                    {menuState?.id === u.id_pengguna && (
+                      <RowMenu
+                        anchorEl={menuState.el}
+                        onEdit={() => setEditTarget(u)}
+                        onDelete={() => setDeleteTarget(u)}
+                        onClose={() => setMenuState(null)}
+                      />
+                    )}
+                  </td>
                   </tr>
                 ))}
               </tbody>
@@ -489,7 +577,9 @@ export function Users() {
                     <div style={{ fontWeight:700, fontSize:13, color:'#1A2E22' }}>{role.nama}</div>
                     <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:1 }}>{role.pengguna} pengguna</div>
                   </div>
-                  <IcoShield />
+                  <div style={{ width:28, height:28, borderRadius:8, background:role.iconBg, color:role.iconColor, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <IcoShield />
+                  </div>
                 </div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
                   {role.perms.map(p => <PermTag key={p} label={p} />)}
@@ -506,7 +596,6 @@ export function Users() {
           <div className="wt-card-title">Audit Log</div>
           <span style={{ fontSize:12, color:'#9CA3AF' }}>{(auditLogs as any[]).length} aktivitas tercatat</span>
         </div>
-
         {auditLoading ? (
           <div style={{ padding:32, textAlign:'center', color:'#9CA3AF', fontSize:14 }}>Memuat log…</div>
         ) : (auditLogs as any[]).length === 0 ? (
@@ -538,15 +627,9 @@ export function Users() {
       </div>
 
       {/* ── Modals ── */}
-      {showAdd && (
-        <AddUserModal onClose={() => setShowAdd(false)} onSaved={() => setShowAdd(false)} />
-      )}
-      {editTarget && (
-        <EditUserModal user={editTarget} onClose={() => setEditTarget(null)} onSaved={() => setEditTarget(null)} />
-      )}
-      {deleteTarget && (
-        <DeleteUserModal user={deleteTarget} onClose={() => setDeleteTarget(null)} onDeleted={() => setDeleteTarget(null)} />
-      )}
+      {showAdd && <AddUserModal onClose={() => setShowAdd(false)} onSaved={() => setShowAdd(false)} />}
+      {editTarget && <EditUserModal user={editTarget} onClose={() => setEditTarget(null)} onSaved={() => setEditTarget(null)} />}
+      {deleteTarget && <DeleteUserModal user={deleteTarget} onClose={() => setDeleteTarget(null)} onDeleted={() => setDeleteTarget(null)} />}
     </>
   )
 }

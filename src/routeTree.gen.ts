@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as GudangRouteImport } from './routes/gudang'
 import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
@@ -34,6 +35,11 @@ const ReportsRoute = ReportsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GudangRoute = GudangRouteImport.update({
+  id: '/gudang',
+  path: '/gudang',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AlertsRoute = AlertsRouteImport.update({
@@ -80,6 +86,7 @@ const InboundNewRoute = InboundNewRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
+  '/gudang': typeof GudangRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
   '/users': typeof UsersRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
+  '/gudang': typeof GudangRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
   '/users': typeof UsersRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
+  '/gudang': typeof GudangRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
   '/users': typeof UsersRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/alerts'
+    | '/gudang'
     | '/login'
     | '/reports'
     | '/users'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/alerts'
+    | '/gudang'
     | '/login'
     | '/reports'
     | '/users'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/alerts'
+    | '/gudang'
     | '/login'
     | '/reports'
     | '/users'
@@ -162,6 +174,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AlertsRoute: typeof AlertsRoute
+  GudangRoute: typeof GudangRoute
   LoginRoute: typeof LoginRoute
   ReportsRoute: typeof ReportsRoute
   UsersRoute: typeof UsersRoute
@@ -194,6 +207,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gudang': {
+      id: '/gudang'
+      path: '/gudang'
+      fullPath: '/gudang'
+      preLoaderRoute: typeof GudangRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/alerts': {
@@ -258,6 +278,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AlertsRoute: AlertsRoute,
+  GudangRoute: GudangRoute,
   LoginRoute: LoginRoute,
   ReportsRoute: ReportsRoute,
   UsersRoute: UsersRoute,

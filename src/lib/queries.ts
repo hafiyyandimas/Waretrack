@@ -239,6 +239,129 @@ export const deleteStokGudang = createServerFn({ method: 'POST' })
     return { ok: true }
   })
 
+// ─── Gudang CRUD ──────────────────────────────────────────────────────────────
+
+export const createGudang = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: { data: { nama_gudang: string } }) => {
+    const row = await prisma.gudang.create({ data: { nama_gudang: data.nama_gudang } })
+    return { ok: true, data: row }
+  })
+
+export const updateGudang = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: { data: { id_gudang: number; nama_gudang: string } }) => {
+    const row = await prisma.gudang.update({
+      where: { id_gudang: BigInt(data.id_gudang) },
+      data:  { nama_gudang: data.nama_gudang },
+    })
+    return { ok: true, data: row }
+  })
+ 
+export const deleteGudang = createServerFn({ method: 'POST' })
+  .handler(async ({ data }: { data: number }) => {
+    const count = await prisma.stokGudang.count({ where: { id_gudang: BigInt(data) } })
+    if (count > 0) return { ok: false, hasStok: true, count }
+    await prisma.gudang.delete({ where: { id_gudang: BigInt(data) } })
+    return { ok: true, hasStok: false }
+  })
+
+// ─── Reset Password ───────────────────────────────────────────────────────────
+
+// Helper internal
+function parseToken(token: string | null): { state: 'none' | 'pending' | 'active' | 'expired'; code?: string } {
+  if (!token) return { state: 'none' }
+  if (token === 'pending') return { state: 'pending' }
+  const [code, expStr] = token.split(':')
+  const expiry = parseInt(expStr, 10)
+  if (isNaN(expiry) || Date.now() > expiry) return { state: 'expired' }
+  return { state: 'active', code }
+}
+
+// User: request reset password
+export const requestPasswordReset = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: { data: { username: string } }) => {
+    const user = await prisma.pengguna.findFirst({
+      where: { OR: [{ email: data.username }, { nama_lengkap: data.username }] },
+    })
+    if (!user) return { ok: false, error: 'Username tidak ditemukan.' }
+
+    const parsed = parseToken(user.token)
+
+    // Token masih aktif → langsung ke input token
+    if (parsed.state === 'active') return { ok: true, state: 'has_token' }
+
+    // Sudah pending → beritahu user menunggu
+    if (parsed.state === 'pending') return { ok: true, state: 'pending' }
+
+    // Buat request baru
+    await prisma.pengguna.update({
+      where: { id_pengguna: user.id_pengguna },
+      data:  { token: 'pending', updated_at: new Date() },
+    })
+    return { ok: true, state: 'requested' }
+  })
+
+// Admin: approve reset → generate token 15 menit
+export const approvePasswordReset = createServerFn({ method: 'POST' })
+  .handler(async ({ data }: { data: number }) => {
+    const chars  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    const code   = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+    const expiry = Date.now() + 15 * 60 * 1000  // 15 menit
+    await prisma.pengguna.update({
+      where: { id_pengguna: BigInt(data) },
+      data:  { token: `${code}:${expiry}`, updated_at: new Date() },
+    })
+    return { ok: true, code }
+  })
+
+// User: validate token
+export const validateResetToken = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: { data: { username: string; token: string } }) => {
+    const user = await prisma.pengguna.findFirst({
+      where: { OR: [{ email: data.username }, { nama_lengkap: data.username }] },
+    })
+    if (!user) return { ok: false, error: 'User tidak ditemukan.' }
+
+    const parsed = parseToken(user.token)
+    if (parsed.state !== 'active') return { ok: false, error: 'Token tidak valid atau sudah kadaluarsa.' }
+    if (parsed.code !== data.token.toUpperCase()) return { ok: false, error: 'Kode token salah.' }
+
+    return { ok: true }
+  })
+
+// User: ganti password dengan token
+export const changePasswordWithToken = createServerFn({ method: 'POST' })
+  // @ts-ignore
+  .handler(async ({ data }: { data: { username: string; token: string; newPassword: string } }) => {
+    const user = await prisma.pengguna.findFirst({
+      where: { OR: [{ email: data.username }, { nama_lengkap: data.username }] },
+    })
+    if (!user) return { ok: false, error: 'User tidak ditemukan.' }
+
+    const parsed = parseToken(user.token)
+    if (parsed.state !== 'active' || parsed.code !== data.token.toUpperCase())
+      return { ok: false, error: 'Token tidak valid atau sudah kadaluarsa.' }
+
+    await prisma.pengguna.update({
+      where: { id_pengguna: user.id_pengguna },
+      data:  { password_hash: data.newPassword, token: null, updated_at: new Date() },
+    })
+    return { ok: true }
+  })
+
+// Admin: cancel / tolak request
+export const cancelPasswordReset = createServerFn({ method: 'POST' })
+  .handler(async ({ data }: { data: number }) => {
+    await prisma.pengguna.update({
+      where: { id_pengguna: BigInt(data) },
+      data:  { token: null, updated_at: new Date() },
+    })
+    return { ok: true }
+  })
+  
 // ─── Bulk Create (Import CSV) ─────────────────────────────────────────────────
 // CSV import: tidak ada stok awal, hanya data produk
 
@@ -503,7 +626,7 @@ export const registerUser = createServerFn({ method: 'POST' })
         nama_lengkap:  data.nama_lengkap,
         email:         data.username,
         password_hash: data.password,
-        role:          'Staff Inbound',
+        role:          'Operator Gudang',
         updated_at:    new Date(),
       },
     })

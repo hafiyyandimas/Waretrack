@@ -14,6 +14,7 @@ const NAV = [
   { to: '/inbound',  icon: <IconInbound />,   label: 'Stok Masuk' },
   { to: '/outbound', icon: <IconOutbound />,  label: 'Stok Keluar' },
   { to: '/alerts',   icon: <IconAlert />,     label: 'Alert Stok' },
+  { to: '/gudang',   icon: <IconWarehouse />, label: 'Gudang' },       
   { to: '/reports',  icon: <IconChart />,     label: 'Laporan & Analitik' },
   { to: '/users',    icon: <IconUsers />,     label: 'User & Role' },
 ]
@@ -48,6 +49,9 @@ function IconBell() {
 }
 function IconLogout() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+}
+function IconWarehouse() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
 }
 
 const CRITICAL_CSS = `
@@ -135,10 +139,13 @@ function Shell() {
 
   // Filter nav berdasarkan role
   const visibleNav = NAV.filter(item => {
-    if (item.to === '/users' && userRole !== 'Super Admin') return false
+    // User & Role: hanya Admin
+    if (item.to === '/users' && userRole !== 'Admin') return false
+    // Gudang: Admin dan Staff Gudang (Operator Gudang tidak bisa lihat)
+    if (item.to === '/gudang' && userRole !== 'Admin' && userRole !== 'Staff Gudang') return false
     return true
   })
-
+  
   return (
     <html lang="id">
       {HEAD}

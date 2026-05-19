@@ -1,7 +1,5 @@
 # Getting Started
 
-Latest Changes: Inbound + Outbound Pages Implementation
-
 # Install dependencies
 
 ```bash
@@ -38,12 +36,7 @@ This project uses [Vitest](https://vitest.dev/) for testing. You can run the tes
 npm run test
 ```
 
-# Latest Issues (12 Mei 2026)
-
-
-
 # Database Tables Format
-
 Queries used (PostgreSQL / Supabase):
 
 ```bash
@@ -55,6 +48,7 @@ create table public.pengguna (
   nama_lengkap character varying not null,
   updated_at timestamp without time zone not null,
   created_at timestamp without time zone not null,
+  token text,
   constraint pengguna_pkey primary key (id_pengguna)
 ) TABLESPACE pg_default;
 ```

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { loginUser, registerUser } from '../lib/queries'
+import { loginUser, registerUser, requestPasswordReset, validateResetToken, changePasswordWithToken } from '../lib/queries'
 
-type View = 'login' | 'signup' | 'forgot' | 'contact'
+type View = 'login' | 'signup' | 'forgot' | 'contact' | 'token' | 'change-password'
 
-interface LoginForm  { username: string; password: string }
-interface SignupForm { nama_lengkap: string; username: string; password: string; konfirmasi: string }
+interface LoginForm   { username: string; password: string }
+interface SignupForm  { nama_lengkap: string; username: string; password: string; konfirmasi: string }
 interface ContactForm { nama: string; email: string; pesan: string }
 
 // ── SVG Icons ─────────────────────────────────────────────────────────────────
@@ -79,26 +79,36 @@ function Branding() {
 // ── Main Component ─────────────────────────────────────────────────────────────
 export function Login() {
   const navigate = useNavigate()
-  const [view, setView]               = useState<View>('login')
-  const [rememberMe, setRememberMe]   = useState(false)
+  const [view, setView]             = useState<View>('login')
+  const [rememberMe, setRememberMe] = useState(false)
 
   // Login state
-  const [loginForm, setLoginForm]       = useState<LoginForm>({ username:'', password:'' })
-  const [loginErrors, setLoginErrors]   = useState<Partial<LoginForm>>({})
+  const [loginForm, setLoginForm]           = useState<LoginForm>({ username:'', password:'' })
+  const [loginErrors, setLoginErrors]       = useState<Partial<LoginForm>>({})
   const [loginServerErr, setLoginServerErr] = useState<string|null>(null)
-  const [loginLoading, setLoginLoading] = useState(false)
+  const [loginLoading, setLoginLoading]     = useState(false)
 
   // Signup state
-  const [signupForm, setSignupForm]       = useState<SignupForm>({ nama_lengkap:'', username:'', password:'', konfirmasi:'' })
-  const [signupErrors, setSignupErrors]   = useState<Partial<SignupForm>>({})
+  const [signupForm, setSignupForm]           = useState<SignupForm>({ nama_lengkap:'', username:'', password:'', konfirmasi:'' })
+  const [signupErrors, setSignupErrors]       = useState<Partial<SignupForm>>({})
   const [signupServerErr, setSignupServerErr] = useState<string|null>(null)
-  const [signupLoading, setSignupLoading] = useState(false)
-  const [signupSuccess, setSignupSuccess] = useState(false)
+  const [signupLoading, setSignupLoading]     = useState(false)
+  const [signupSuccess, setSignupSuccess]     = useState(false)
 
   // Forgot state
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotErr, setForgotErr]     = useState('')
   const [forgotSent, setForgotSent]   = useState(false)
+
+  // Reset password flow state
+  const [resetUsername, setResetUsername]     = useState('')
+  const [tokenInput, setTokenInput]           = useState('')
+  const [tokenErr, setTokenErr]               = useState('')
+  const [newPass, setNewPass]                 = useState('')
+  const [newPassConfirm, setNewPassConfirm]   = useState('')
+  const [changePassErr, setChangePassErr]     = useState('')
+  const [changePassLoading, setChangePassLoading] = useState(false)
+  const [changePassSuccess, setChangePassSuccess] = useState(false)
 
   // Contact state
   const [contactForm, setContactForm]       = useState<ContactForm>({ nama:'', email:'', pesan:'' })
@@ -153,15 +163,23 @@ export function Login() {
     if (Object.keys(e).length) { setSignupErrors(e); return }
     setSignupLoading(true)
     try {
-      const res = await registerUser({ data: {
-        nama_lengkap: signupForm.nama_lengkap,
-        username:     signupForm.username,
-        password:     signupForm.password,
-      }})
+      const res = await registerUser({ data: { nama_lengkap: signupForm.nama_lengkap, username: signupForm.username, password: signupForm.password } })
       if (!res.ok) { setSignupServerErr(res.error ?? 'Pendaftaran gagal.'); return }
       setSignupSuccess(true)
     } catch { setSignupServerErr('Terjadi kesalahan. Coba lagi.') }
     finally   { setSignupLoading(false) }
+  }
+
+  // ── Forgot handler ──
+  async function handleForgotSubmit() {
+    if (!forgotEmail.trim()) { setForgotErr('Email atau username wajib diisi.'); return }
+    setResetUsername(forgotEmail)
+    try {
+      const res = await requestPasswordReset({ data: { username: forgotEmail } })
+      if (!res.ok) { setForgotErr(res.error ?? 'Gagal mengirim permintaan.'); return }
+      if (res.state === 'has_token') { setView('token'); return }
+      setForgotSent(true)
+    } catch { setForgotErr('Terjadi kesalahan.') }
   }
 
   // ── Contact handlers ──
@@ -230,7 +248,7 @@ export function Login() {
           </button>
         </p>
       </div>
-      <p style={shared.pageFooter}>© 2024 WareTrack. All rights reserved.</p>
+      <p style={shared.pageFooter}>© 2026 WareTrack. All rights reserved.</p>
     </div>
   )
 
@@ -243,15 +261,10 @@ export function Login() {
       <div style={shared.card}>
         <h2 style={shared.cardTitle}>Buat Akun Baru</h2>
         <p style={shared.cardSub}>Daftarkan diri Anda ke sistem WareTrack</p>
-
         {signupSuccess ? (
           <>
-            <div style={shared.successBanner}>
-              ✓ Akun berhasil dibuat! Silakan masuk dengan username dan password Anda.
-            </div>
-            <button style={shared.submitBtn} onClick={()=>setView('login')}>
-              Masuk sekarang
-            </button>
+            <div style={shared.successBanner}>✓ Akun berhasil dibuat! Silakan masuk dengan username dan password Anda.</div>
+            <button style={shared.submitBtn} onClick={()=>setView('login')}>Masuk sekarang</button>
           </>
         ) : (
           <>
@@ -265,7 +278,6 @@ export function Login() {
                 </div>
                 {signupErrors.nama_lengkap && <span style={shared.fieldErr}>{signupErrors.nama_lengkap}</span>}
               </div>
-
               <div style={shared.fieldGroup}>
                 <label style={shared.label}>Username <span style={{ color:'#EF4444' }}>*</span></label>
                 <div style={{ ...shared.inputWrap, ...(signupErrors.username ? shared.inputWrapErr : {}) }}>
@@ -274,7 +286,6 @@ export function Login() {
                 </div>
                 {signupErrors.username && <span style={shared.fieldErr}>{signupErrors.username}</span>}
               </div>
-
               <div style={shared.fieldGroup}>
                 <label style={shared.label}>Password <span style={{ color:'#EF4444' }}>*</span></label>
                 <div style={{ ...shared.inputWrap, ...(signupErrors.password ? shared.inputWrapErr : {}) }}>
@@ -283,7 +294,6 @@ export function Login() {
                 </div>
                 {signupErrors.password && <span style={shared.fieldErr}>{signupErrors.password}</span>}
               </div>
-
               <div style={shared.fieldGroup}>
                 <label style={shared.label}>Konfirmasi Password <span style={{ color:'#EF4444' }}>*</span></label>
                 <div style={{ ...shared.inputWrap, ...(signupErrors.konfirmasi ? shared.inputWrapErr : {}) }}>
@@ -293,22 +303,14 @@ export function Login() {
                 {signupErrors.konfirmasi && <span style={shared.fieldErr}>{signupErrors.konfirmasi}</span>}
               </div>
             </div>
-
-            <button
-              style={{ ...shared.submitBtn, opacity:signupLoading?0.6:1, cursor:signupLoading?'not-allowed':'pointer', marginTop:4 }}
-              onClick={handleSignup}
-              disabled={signupLoading}
-            >
+            <button style={{ ...shared.submitBtn, opacity:signupLoading?0.6:1, cursor:signupLoading?'not-allowed':'pointer', marginTop:4 }} onClick={handleSignup} disabled={signupLoading}>
               {signupLoading ? 'Mendaftarkan...' : 'Daftar'}
             </button>
           </>
         )}
-
-        <button style={shared.backBtn} onClick={()=>setView('login')}>
-          <ArrowLeftIcon /> Sudah punya akun? Masuk
-        </button>
+        <button style={shared.backBtn} onClick={()=>setView('login')}><ArrowLeftIcon /> Sudah punya akun? Masuk</button>
       </div>
-      <p style={shared.pageFooter}>© 2024 WareTrack. All rights reserved.</p>
+      <p style={shared.pageFooter}>© 2026 WareTrack. All rights reserved.</p>
     </div>
   )
 
@@ -327,23 +329,27 @@ export function Login() {
           </div>
         </div>
         {forgotSent ? (
-          <div style={shared.successBanner}>✓ Link reset telah dikirim. Periksa email atau username Anda.</div>
+          <div style={shared.successBanner}>
+            ⏳ Permintaan reset password telah dikirim. Menunggu admin menyetujui.
+            <br />
+            <button style={{ ...shared.linkBtn, marginTop:8, fontSize:13 }} onClick={()=>setView('token')}>
+              Sudah punya kode? Masukkan di sini →
+            </button>
+          </div>
         ) : (
           <>
             <p style={{ fontSize:14, color:'#6B7C74', lineHeight:1.6, margin:'0 0 20px' }}>
-              Masukkan email atau username yang terdaftar. Kami akan mengirimkan link untuk reset password Anda.
+              Masukkan email atau username yang terdaftar. Admin akan memberikan kode reset password.
             </p>
+            {forgotErr && <div style={shared.errBanner}>⚠ {forgotErr}</div>}
             <div style={shared.fieldGroup}>
               <label style={shared.label}>Email atau Username</label>
               <div style={{ ...shared.inputWrap, ...(forgotErr ? shared.inputWrapErr : {}) }}>
                 <span style={shared.inputIcon}><MailIcon /></span>
                 <input style={shared.input} type="text" placeholder="nama@perusahaan.com atau username" value={forgotEmail} onChange={e=>{ setForgotEmail(e.target.value); setForgotErr('') }} autoFocus />
               </div>
-              {forgotErr && <span style={shared.fieldErr}>{forgotErr}</span>}
             </div>
-            <button style={shared.submitBtn} onClick={()=>{ if(!forgotEmail.trim()){ setForgotErr('Email atau username wajib diisi.'); return } setForgotSent(true) }}>
-              Kirim Link Reset
-            </button>
+            <button style={shared.submitBtn} onClick={handleForgotSubmit}>Kirim Permintaan Reset</button>
           </>
         )}
         <button style={shared.backBtn} onClick={()=>setView('login')}><ArrowLeftIcon /> Kembali ke Login</button>
@@ -351,6 +357,100 @@ export function Login() {
       <p style={shared.pageFooter}>
         Butuh bantuan? <button style={shared.linkBtn} onClick={()=>setView('contact')}>Hubungi Administrator</button>
       </p>
+    </div>
+  )
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // VIEW: TOKEN
+  // ════════════════════════════════════════════════════════════════════════════
+  if (view === 'token') return (
+    <div style={shared.page}>
+      <Branding />
+      <div style={shared.card}>
+        <h2 style={shared.cardTitle}>Masukkan Kode Reset</h2>
+        <p style={shared.cardSub}>Masukkan kode 6 karakter yang diberikan oleh admin.</p>
+        {tokenErr && <div style={shared.errBanner}>⚠ {tokenErr}</div>}
+        <div style={shared.fieldGroup}>
+          <label style={shared.label}>Username / Email</label>
+          <div style={shared.inputWrap}>
+            <span style={shared.inputIcon}><MailIcon /></span>
+            <input style={shared.input} placeholder="Username kamu" value={resetUsername} onChange={e=>{ setResetUsername(e.target.value); setTokenErr('') }} />
+          </div>
+        </div>
+        <div style={shared.fieldGroup}>
+          <label style={shared.label}>Kode Token (6 karakter)</label>
+          <div style={shared.inputWrap}>
+            <span style={shared.inputIcon}><LockIcon /></span>
+            <input style={{ ...shared.input, fontFamily:'monospace', letterSpacing:'0.2em', textTransform:'uppercase' }}
+              placeholder="ABC123" maxLength={6} value={tokenInput}
+              onChange={e=>{ setTokenInput(e.target.value.toUpperCase()); setTokenErr('') }} />
+          </div>
+        </div>
+        <button style={shared.submitBtn} onClick={async () => {
+          if (!resetUsername.trim() || !tokenInput.trim()) { setTokenErr('Isi semua field.'); return }
+          try {
+            const res = await validateResetToken({ data: { username: resetUsername, token: tokenInput } })
+            if (!res.ok) { setTokenErr(res.error ?? 'Token tidak valid.'); return }
+            setView('change-password')
+          } catch { setTokenErr('Terjadi kesalahan.') }
+        }}>
+          Verifikasi Kode
+        </button>
+        <button style={shared.backBtn} onClick={()=>setView('forgot')}><ArrowLeftIcon /> Kembali</button>
+      </div>
+      <p style={shared.pageFooter}>© 2026 WareTrack. All rights reserved.</p>
+    </div>
+  )
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // VIEW: CHANGE PASSWORD
+  // ════════════════════════════════════════════════════════════════════════════
+  if (view === 'change-password') return (
+    <div style={shared.page}>
+      <Branding />
+      <div style={shared.card}>
+        {changePassSuccess ? (
+          <>
+            <div style={shared.successBanner}>✓ Password berhasil diubah! Silakan login dengan password baru.</div>
+            <button style={shared.submitBtn} onClick={()=>{ setView('login'); setChangePassSuccess(false) }}>Masuk Sekarang</button>
+          </>
+        ) : (
+          <>
+            <h2 style={shared.cardTitle}>Buat Password Baru</h2>
+            <p style={shared.cardSub}>Password baru minimal 6 karakter.</p>
+            {changePassErr && <div style={shared.errBanner}>⚠ {changePassErr}</div>}
+            <div style={shared.fieldGroup}>
+              <label style={shared.label}>Password Baru <span style={{ color:'#EF4444' }}>*</span></label>
+              <div style={shared.inputWrap}>
+                <span style={shared.inputIcon}><LockIcon /></span>
+                <input style={shared.input} type="password" placeholder="Minimal 6 karakter" value={newPass} onChange={e=>{ setNewPass(e.target.value); setChangePassErr('') }} />
+              </div>
+            </div>
+            <div style={shared.fieldGroup}>
+              <label style={shared.label}>Konfirmasi Password <span style={{ color:'#EF4444' }}>*</span></label>
+              <div style={shared.inputWrap}>
+                <span style={shared.inputIcon}><LockIcon /></span>
+                <input style={shared.input} type="password" placeholder="Ulangi password baru" value={newPassConfirm} onChange={e=>{ setNewPassConfirm(e.target.value); setChangePassErr('') }} />
+              </div>
+            </div>
+            <button style={{ ...shared.submitBtn, opacity:changePassLoading?0.6:1 }} disabled={changePassLoading}
+              onClick={async () => {
+                if (newPass.length < 6)        { setChangePassErr('Password minimal 6 karakter.'); return }
+                if (newPass !== newPassConfirm) { setChangePassErr('Password tidak cocok.'); return }
+                setChangePassLoading(true)
+                try {
+                  const res = await changePasswordWithToken({ data: { username: resetUsername, token: tokenInput, newPassword: newPass } })
+                  if (!res.ok) { setChangePassErr(res.error ?? 'Gagal mengubah password.'); return }
+                  setChangePassSuccess(true)
+                } catch { setChangePassErr('Terjadi kesalahan.') }
+                finally { setChangePassLoading(false) }
+              }}>
+              {changePassLoading ? 'Menyimpan…' : 'Simpan Password Baru'}
+            </button>
+          </>
+        )}
+      </div>
+      <p style={shared.pageFooter}>© 2026 WareTrack. All rights reserved.</p>
     </div>
   )
 
@@ -396,9 +496,7 @@ export function Login() {
         <div style={{ background:'#fff', borderRadius:20, padding:'32px 36px', flex:1, boxShadow:'0 4px 24px rgba(0,0,0,0.07)' }}>
           <h2 style={{ fontSize:22, fontWeight:700, color:'#1A2E22', margin:'0 0 6px', letterSpacing:'-0.01em' }}>Hubungi Administrator</h2>
           <p style={{ fontSize:14, color:'#6B7C74', margin:'0 0 24px' }}>Kirim pesan atau pertanyaan Anda kepada tim administrator</p>
-          {contactSent && (
-            <div style={shared.successBanner}>✓ Pesan Anda telah berhasil dikirim. Tim administrator akan menghubungi Anda segera.</div>
-          )}
+          {contactSent && <div style={shared.successBanner}>✓ Pesan Anda telah berhasil dikirim. Tim administrator akan menghubungi Anda segera.</div>}
           <div style={shared.fieldGroup}>
             <label style={shared.label}>Nama Lengkap</label>
             <div style={{ ...shared.inputWrap, ...(contactErrors.nama ? shared.inputWrapErr : {}) }}>
@@ -419,7 +517,7 @@ export function Login() {
             <label style={shared.label}>Pesan</label>
             <div style={{ ...shared.inputWrap, ...(contactErrors.pesan ? shared.inputWrapErr : {}), alignItems:'flex-start' }}>
               <span style={{ ...shared.inputIcon, paddingTop:14 }}><ChatIcon /></span>
-              <textarea style={{ ...shared.input, padding:'13px 14px 13px 0', resize:'none', minHeight:120, fontFamily:'inherit', lineHeight:1.6 }}
+              <textarea style={{ ...shared.input, padding:'13px 14px 13px 0', resize:'none', minHeight:120, fontFamily:'inherit', lineHeight:1.6 } as React.CSSProperties}
                 placeholder="Jelaskan kendala atau pertanyaan Anda..." value={contactForm.pesan} onChange={e=>setContactField('pesan',e.target.value)} rows={5} />
             </div>
             {contactErrors.pesan
