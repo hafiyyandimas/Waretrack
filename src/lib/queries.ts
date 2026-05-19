@@ -1,6 +1,6 @@
 import { prisma } from '../db'
 import { createServerFn } from '@tanstack/react-start'
-
+import bcrypt from 'bcryptjs'
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type GudangRow = {
@@ -599,7 +599,8 @@ export const loginUser = createServerFn({ method: 'POST' })
       },
     })
     if (!user) return { ok: false, error: 'Username atau email tidak ditemukan.' }
-    if (data.password !== user.password_hash) return { ok: false, error: 'Password salah.' }
+    const passwordMatch = await bcrypt.compare(data.password, user.password_hash)
+if (!passwordMatch) return { ok: false, error: 'Password salah.' }
     return {
     ok: true,
     user: {

@@ -10,7 +10,6 @@ const adapter = new PrismaPg({
 })
 
 export const prisma = globalThis.__prisma ?? new PrismaClient({ adapter })
-
 if (process.env.NODE_ENV !== 'production') {
   globalThis.__prisma = prisma
 }
