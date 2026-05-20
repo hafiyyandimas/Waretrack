@@ -1,8 +1,9 @@
-import { PrismaClient } from '@prisma/client'
+import pkg from '@prisma/client'
+const { PrismaClient } = pkg
 import { PrismaPg } from '@prisma/adapter-pg'
 
 declare global {
-  var __prisma: PrismaClient | undefined
+  var __prisma: InstanceType<typeof PrismaClient> | undefined
 }
 
 const adapter = new PrismaPg({
@@ -10,7 +11,6 @@ const adapter = new PrismaPg({
 })
 
 export const prisma = globalThis.__prisma ?? new PrismaClient({ adapter })
-
 if (process.env.NODE_ENV !== 'production') {
   globalThis.__prisma = prisma
 }
