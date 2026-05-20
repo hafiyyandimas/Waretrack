@@ -137,14 +137,7 @@ function Shell() {
   const initials = user?.nama_lengkap
     ?.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase() ?? '?'
 
-  // Filter nav berdasarkan role
-  const visibleNav = NAV.filter(item => {
-    // User & Role: hanya Admin
-    if (item.to === '/users' && userRole !== 'Admin') return false
-    // Gudang: Admin dan Staff Gudang (Operator Gudang tidak bisa lihat)
-    if (item.to === '/gudang' && userRole !== 'Admin' && userRole !== 'Staff Gudang') return false
-    return true
-  })
+  const visibleNav = NAV
   
   return (
     <html lang="id">
@@ -160,6 +153,22 @@ function Shell() {
                 <span className="wt-brand-name">WareTrack</span>
               </div>
               <nav className="wt-nav">
+                <div style={{ display:'flex', gap:8, padding:'0 8px 12px' }}>
+                  {(userRole === 'Admin' || userRole === 'Super Admin') && (
+                    <Link to="/users" title="User & Role"
+                      style={{ width:36, height:36, borderRadius:10, background:'#F9FAFB', border:'1px solid #EAECF0', display:'flex', alignItems:'center', justifyContent:'center', color:'#6B7C74', textDecoration:'none' }}
+                      activeProps={{ style: { background:'#EBF5EE', color:'#2E7D52', borderColor:'#D1FAE5' } }}>
+                      <IconUsers />
+                    </Link>
+                  )}
+                  {(userRole === 'Admin' || userRole === 'Super Admin' || userRole === 'Staff Gudang') && (
+                    <Link to="/gudang" title="Gudang"
+                      style={{ width:36, height:36, borderRadius:10, background:'#F9FAFB', border:'1px solid #EAECF0', display:'flex', alignItems:'center', justifyContent:'center', color:'#6B7C74', textDecoration:'none' }}
+                      activeProps={{ style: { background:'#EBF5EE', color:'#2E7D52', borderColor:'#D1FAE5' } }}>
+                      <IconWarehouse />
+                    </Link>
+                  )}
+                </div>
                 {visibleNav.map(item => (
                   <Link
                     key={item.to}

@@ -345,9 +345,10 @@ export const changePasswordWithToken = createServerFn({ method: 'POST' })
     if (parsed.state !== 'active' || parsed.code !== data.token.toUpperCase())
       return { ok: false, error: 'Token tidak valid atau sudah kadaluarsa.' }
 
+    const hashed = await bcrypt.hash(data.newPassword, 10)
     await prisma.pengguna.update({
       where: { id_pengguna: user.id_pengguna },
-      data:  { password_hash: data.newPassword, token: null, updated_at: new Date() },
+      data:  { password_hash: hashed, token: null, updated_at: new Date() },
     })
     return { ok: true }
   })
@@ -622,11 +623,12 @@ export const registerUser = createServerFn({ method: 'POST' })
     const existing = await prisma.pengguna.findFirst({ where: { email: data.username } })
     if (existing) return { ok: false, error: 'Username sudah digunakan.' }
 
+    const hashed = await bcrypt.hash(data.password, 10)
     const user = await prisma.pengguna.create({
       data: {
         nama_lengkap:  data.nama_lengkap,
         email:         data.username,
-        password_hash: data.password,
+        password_hash: hashed,
         role:          'Operator Gudang',
         updated_at:    new Date(),
       },
@@ -656,11 +658,12 @@ export const updateUser = createServerFn({ method: 'POST' })
     }
   }) => {
     const { id_pengguna, password, ...fields } = data
+    const hashed = password ? await bcrypt.hash(password, 10) : undefined
     const row = await prisma.pengguna.update({
       where: { id_pengguna },
       data: {
         ...fields,
-        ...(password ? { password_hash: password } : {}),
+        ...(hashed ? { password_hash: hashed } : {}),
         updated_at: new Date(),
       },
     })
